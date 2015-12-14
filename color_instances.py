@@ -15,7 +15,7 @@ random = np.random.RandomState(np.uint32(hash('reproducible')))
 
 
 def load_colors(h, s, v):
-    return zip(munroecorpus.open_datafile(d) for d in [h, s, v])
+    return zip(*(munroecorpus.open_datafile(d) for d in [h, s, v]))
 
 
 def get_training_instances():
