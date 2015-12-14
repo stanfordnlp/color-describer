@@ -13,6 +13,8 @@
 
 *.bbl
 
+*.swp
+
 .DS_Store
 
 coverage_report/
