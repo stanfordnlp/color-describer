@@ -1,12 +1,13 @@
-from bt import evaluate, metrics, output, timing
+from bt import evaluate, metrics, output, timing, config
 import datetime
 import learners
 import color_instances
 
 
 def main():
+    config.options()
     learner = learners.HistogramLearner()
-    
+
     timing.set_resolution(datetime.timedelta(seconds=1))
     timing.start_task('Step', 4)
 
