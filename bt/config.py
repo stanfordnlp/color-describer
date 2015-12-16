@@ -23,12 +23,27 @@ def options(allow_partial=False):
 
     if allow_partial:
         opts, extras = _options_parser.parse_known_args()
+        mkdirp(opts.run_dir)
         return opts
 
     if _options is None:
         _options = _options_parser.parse_args()
         dump_pretty(vars(_options), 'config.json')
     return _options
+
+
+def mkdirp(dirname):
+    '''
+    Create a directory at the path given by `dirname`, if it doesn't
+    already exist.
+
+    http://stackoverflow.com/a/14364249/4481448
+    '''
+    try:
+        os.makedirs(dirname)
+    except OSError:
+        if not os.path.isdir(dirname):
+            raise
 
 
 def get_file_path(filename):
