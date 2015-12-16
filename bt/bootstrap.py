@@ -194,9 +194,13 @@ Efron, An Introduction to the Bootstrap. Chapman & Hall 1993
     else:
         raise ValueError("Method {0} is not supported.".format(method))
 
-    nvals = np.round((n_samples-1)*avals).astype('int')
-
-    if np.any(nvals==0) or np.any(nvals==n_samples-1):
+    rounded = np.round((n_samples-1)*avals)
+    nvals = rounded.astype('int')
+    if not all(np.isfinite(rounded)):
+        warnings.warn("Some values are non-finite; using extremal samples.", InstabilityWarning)
+        rounded[~np.isfinite(rounded)] = np.array([0.0, n_samples - 1.0])[~np.isfinite(rounded)]
+        nvals = rounded.astype('int')
+    elif np.any(nvals==0) or np.any(nvals==n_samples-1):
         warnings.warn("Some values used extremal samples; results are probably unstable.", InstabilityWarning)
     elif np.any(nvals<10) or np.any(nvals>=n_samples-10):
         warnings.warn("Some values used top 10 low/high samples; results may be unstable.", InstabilityWarning)
