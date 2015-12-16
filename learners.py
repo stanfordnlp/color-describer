@@ -66,7 +66,10 @@ class HistogramLearner(Learner):
     '''
 
     WEIGHTS = [0.322, 0.643, 0.035]
-    GRANULARITY = [(90, 10, 10), (45, 5, 5), (1, 1, 1)]
+    #GRANULARITY = [(90, 10, 10), (45, 5, 5), (1, 1, 1)]
+    GRANULARITY = [(90./360., 0.10, 0.10),
+                   (45./360., 0.05, 0.05),
+                   (1./360., 0.01, 0.01)]
 
     def __init__(self):
         self.hists = []
