@@ -18,12 +18,13 @@ def main():
     learner.train(train_data)
 
     timing.progress(2)
-    train_results = evaluate.evaluate(learner, train_data, metrics.log_likelihood)
+    m = [metrics.log_likelihood, metrics.accuracy]
+    train_results = evaluate.evaluate(learner, train_data, metrics=m, split_id='train')
     output.output_results(train_results, 'train')
 
     timing.progress(3)
     dev_data = color_instances.get_dev_instances()[:100]
-    dev_results = evaluate.evaluate(learner, dev_data, metrics.log_likelihood)
+    dev_results = evaluate.evaluate(learner, dev_data, metrics=m, split_id='dev')
     output.output_results(dev_results, 'dev')
 
     timing.end_task()

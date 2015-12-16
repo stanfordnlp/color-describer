@@ -6,8 +6,7 @@ from bt import config
 def output_results(results, split_id='results', output_stream=None):
     '''
     Log `results` readably to `output_stream`, with a header
-    containing `split_id`, and dump the results in JSON format
-    to "`split_id`.json" in the run directory.
+    containing `split_id`.
 
     :param results: a dictionary of summary statistics from an evaluation
     :type results: dict(str -> object)
@@ -26,5 +25,3 @@ def output_results(results, split_id='results', output_stream=None):
         output_stream.write('%s.%s: %s\n' % (split_id, name, repr(results[name])))
 
     output_stream.flush()
-
-    config.dump_pretty(results, '%s.results.json' % split_id)

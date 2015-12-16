@@ -1,5 +1,6 @@
 from collections import defaultdict, Counter
 import numpy as np
+import json
 
 from bt.learner import Learner
 from bt import timing
@@ -66,10 +67,7 @@ class HistogramLearner(Learner):
     '''
 
     WEIGHTS = [0.322, 0.643, 0.035]
-    #GRANULARITY = [(90, 10, 10), (45, 5, 5), (1, 1, 1)]
-    GRANULARITY = [(90./360., 0.10, 0.10),
-                   (45./360., 0.05, 0.05),
-                   (1./360., 0.01, 0.01)]
+    GRANULARITY = [(90, 10, 10), (45, 5, 5), (1, 1, 1)]
 
     def __init__(self):
         self.hists = []
@@ -95,21 +93,21 @@ class HistogramLearner(Learner):
         return sum(w * p for w, p in zip(self.WEIGHTS, probs))
 
     def predict(self, eval_instances):
-        result = []
-        timing.start_task('Example', len(eval_instances))
-        for i, inst in enumerate(eval_instances):
-            timing.progress(i)
-            name = self.names[self.hist_probs(inst.input).argmax()]
-            result.append(name)
-        timing.end_task()
-        return result
+        return self.predict_and_score(eval_instances)[0]
 
     def score(self, eval_instances):
-        result = []
+        return self.predict_and_score(eval_instances)[1]
+
+    def predict_and_score(self, eval_instances):
+        predict = []
+        score = []
         timing.start_task('Example', len(eval_instances))
         for i, inst in enumerate(eval_instances):
             timing.progress(i)
-            prob = self.hist_probs(inst.input)[self.name_to_index[inst.output]]
-            result.append(-np.log(prob))
+            hist_probs = self.hist_probs(inst.input)
+            name = self.names[hist_probs.argmax()]
+            prob = hist_probs[self.name_to_index[inst.output]]
+            predict.append(name)
+            score.append(-np.log(prob))
         timing.end_task()
-        return result
+        return predict, score
