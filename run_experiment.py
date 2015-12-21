@@ -8,11 +8,11 @@ def main():
     config.options()
     learner = learners.HistogramLearner()
 
-    timing.set_resolution(datetime.timedelta(seconds=1))
+    timing.set_resolution(datetime.timedelta(minutes=5))
     timing.start_task('Step', 4)
 
     timing.progress(0)
-    train_data = color_instances.get_training_instances()[:1000]
+    train_data = color_instances.get_training_instances()
 
     timing.progress(1)
     learner.train(train_data)
@@ -23,7 +23,7 @@ def main():
     output.output_results(train_results, 'train')
 
     timing.progress(3)
-    dev_data = color_instances.get_dev_instances()[:100]
+    dev_data = color_instances.get_dev_instances()
     dev_results = evaluate.evaluate(learner, dev_data, metrics=m, split_id='dev')
     output.output_results(dev_results, 'dev')
 

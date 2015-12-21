@@ -47,14 +47,14 @@ def evaluate(learner, eval_data, metrics, metric_names=None, split_id=None):
         mean = np.mean(inst_outputs)
         sum = np.sum(inst_outputs)
         std = np.std(inst_outputs)
-        ci_lower, ci_upper = bootstrap.ci(inst_outputs)
+        #ci_lower, ci_upper = bootstrap.ci(inst_outputs)
 
         results.update({
           prefix + 'mean': mean,
           prefix + 'sum': sum,
           prefix + 'std': std,
-          prefix + 'ci_lower': ci_lower,
-          prefix + 'ci_upper': ci_upper,
+          #prefix + 'ci_lower': ci_lower,
+          #prefix + 'ci_upper': ci_upper,
         })
 
     config.dump_pretty(results, 'results.%sjson' % split_prefix)
