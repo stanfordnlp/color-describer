@@ -23,7 +23,8 @@ def options(allow_partial=False):
 
     if allow_partial:
         opts, extras = _options_parser.parse_known_args()
-        mkdirp(opts.run_dir)
+        if opts.run_dir:
+            mkdirp(opts.run_dir)
         return opts
 
     if _options is None:
