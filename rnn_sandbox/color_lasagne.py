@@ -4,22 +4,24 @@
 #   <https://github.com/fchollet/keras/blob/master/examples/lstm_text_generation.py>
 # modified to apply to color description understanding.
 from __future__ import print_function
-from lasagne.layers import InputLayer, DropoutLayer, DenseLayer
+import operator
+from lasagne.layers import InputLayer, DropoutLayer, DenseLayer, EmbeddingLayer
 from lasagne.layers import ReshapeLayer, NonlinearityLayer, ConcatLayer
 from lasagne.layers import get_output, get_all_params
 from lasagne.layers.recurrent import LSTMLayer
-from lasagne.objectives import squared_error, categorical_crossentropy
+from lasagne.objectives import categorical_crossentropy
 from lasagne.nonlinearities import softmax
 from lasagne.updates import rmsprop
 import theano
 import theano.tensor as T
+from theano.tensor.nnet import crossentropy_categorical_1hot
+from theano.compile import MonitorMode
 import matplotlib
 matplotlib.use('TkAgg')
 from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import numpy as np
-import scipy.stats
 # import random
 from collections import namedtuple, Sequence
 from visualization import plot_matrix
@@ -27,7 +29,11 @@ from visualization import plot_matrix
 
 STEP = 1
 RESOLUTION = (4, 4, 4)
+NUM_BUCKETS = reduce(operator.mul, RESOLUTION)
+BUCKET_SIZE = tuple(256 // r for r in RESOLUTION)
 STDEV = 10.0
+
+DETECT_NANS = False
 
 
 Vectorization = namedtuple('Vectorization', (
@@ -71,6 +77,13 @@ def get_vectorization(examples):
     return Vectorization(tokens, token_indices, indices_token, max_len)
 
 
+def get_bucket(color):
+    bucket_dims = [e // r for e, r in zip(color, BUCKET_SIZE)]
+    return (bucket_dims[0] * RESOLUTION[1] * RESOLUTION[2] +
+            bucket_dims[1] * RESOLUTION[2] +
+            bucket_dims[2])
+
+
 def data_to_arrays_listener(path):
     examples = get_examples(path)
     vec = get_vectorization(examples)
@@ -86,13 +99,17 @@ def data_to_arrays_listener(path):
     print('nb sequences:', len(sentences))
 
     print('Vectorization...')
-    X = np.zeros((len(sentences), vec.max_len, len(vec.tokens)), dtype=np.bool)
-    y = np.zeros((len(sentences), 3), dtype=np.float32)
+    X = np.zeros((len(sentences), vec.max_len), dtype=np.int32)
+    y = np.zeros((len(sentences),), dtype=np.int32)
     for i, sentence in enumerate(sentences):
         for t, token in enumerate(sentence):
-            X[i, t, vec.token_indices[token]] = 1
-        y[i, :] = colors[i]
+            X[i, t] = vec.token_indices[token]
+        y[i] = get_bucket(colors[i])
 
+    print('X:')
+    print(X)
+    print('y:')
+    print(y)
     return X, y, vec
 
 
@@ -114,18 +131,18 @@ def data_to_arrays_speaker(path):
     print('number of sequences:', len(colors))
 
     print('Vectorization...')
-    c = np.zeros((len(colors), 3), dtype=np.float32)
-    P = np.zeros((len(previous), vec.max_len - 1, len(vec.tokens)), dtype=np.float32)
-    mask = np.zeros((len(previous), vec.max_len - 1), dtype=np.float32)
-    N = np.zeros((len(next_tokens), vec.max_len - 1, len(vec.tokens)), dtype=np.float32)
+    c = np.zeros((len(colors),), dtype=np.int32)
+    P = np.zeros((len(previous), vec.max_len - 1), dtype=np.int32)
+    mask = np.zeros((len(previous), vec.max_len - 1), dtype=np.int32)
+    N = np.zeros((len(next_tokens), vec.max_len - 1), dtype=np.int32)
     for i, (color, prev, next) in enumerate(zip(colors, previous, next_tokens)):
-        c[i, :] = colors[i]
+        c[i] = get_bucket(colors[i])
         for t, token in enumerate(prev):
-            P[i, t, vec.token_indices[token]] = 1
+            P[i, t] = vec.token_indices[token]
         for t, token in enumerate(next):
-            N[i, t, vec.token_indices[token]] = 1
+            N[i, t] = vec.token_indices[token]
             mask[i, t] = (token != '<MASK>')
-    c = np.tile(c[:, np.newaxis, :], [1, vec.max_len - 1, 1])
+    c = np.tile(c[:, np.newaxis], [1, vec.max_len - 1])
 
     print('c:')
     print(c)
@@ -157,18 +174,20 @@ def train(model, X, y, mat_fn):
         print('-' * 50)
         print('Iteration %d' % iteration)
         history = model.fit(X, y, batch_size=128, nb_epoch=NUM_EPOCHS)
-        yield (np.mean(history['loss']), mat_fn(model))
+        mean_loss = np.mean(history['loss'])
+        print('Mean loss: %s' % mean_loss)
+        yield (mean_loss, mat_fn(model))
 
 
 def get_log_prob_listener(model, input, output, vec, verbose=False):
     sentence = ['<s>'] * (vec.max_len - 1 - len(input)) + input + ['</s>']
-    x = np.zeros((1, vec.max_len, len(vec.tokens)))
+    x = np.zeros((1, vec.max_len), dtype=np.int32)
     for t, in_token in enumerate(sentence):
-        x[0, t, vec.token_indices[in_token]] = 1.
-    preds = model.predict(x, verbose=0)[0]
-    if verbose:
-        print('preds for %s: %s' % (input, preds))
-    return scipy.stats.multivariate_normal(preds, STDEV).logpdf(output)
+        x[0, t] = vec.token_indices[in_token]
+    preds = model.predict(x, verbose=0)
+    # if verbose:
+    #     print('preds for %s: %s' % (input, preds))
+    return preds[0, get_bucket(output)]
 
 
 def get_log_prob_speaker(model, input, output, vec, verbose=False):
@@ -177,15 +196,22 @@ def get_log_prob_speaker(model, input, output, vec, verbose=False):
     full = ['<s>'] + output + ['</s>'] + ['<MASK>'] * (vec.max_len - 2 - len(output))
     prev = full[:-1]
     next = full[1:]
-    c = np.array([[input] * (vec.max_len - 1)])
-    P = np.zeros((1, vec.max_len - 1, len(vec.tokens)))
-    mask = np.zeros((1, vec.max_len - 1))
+    c = np.array([[get_bucket(input)] * (vec.max_len - 1)], dtype=np.int32)
+    P = np.zeros((1, vec.max_len - 1), dtype=np.int32)
+    mask = np.zeros((1, vec.max_len - 1), dtype=np.int32)
     for t, (in_token, out_token) in enumerate(zip(prev, next)):
-        P[0, t, vec.token_indices[in_token]] = 1.
+        P[0, t] = vec.token_indices[in_token]
         mask[0, t] = (out_token != '<MASK>')
+    if verbose and False:
+        print('c:')
+        print(c)
+        print('P:')
+        print(P)
+        print('mask:')
+        print(mask)
     preds = model.predict([c, P, mask], verbose=0)
-    if verbose:
-        print('preds for %s: %s' % (input, preds))
+    # if verbose:
+    #     print('preds for %s: %s' % (input, preds))
     log_prob = 1.0
     for t, out_token in enumerate(next):
         if out_token != '<MASK>':
@@ -199,7 +225,6 @@ S_DATA = [
     [['red'], ['green'], ['blue'],
      ['bright', 'red'], ['bright', 'green'], ['bright', 'blue']],
 ]
-'''
 S_DATA = [
     [(128, 0, 0), (255, 0, 0), (0, 0, 255), (64, 64, 255)],
     [['red'], ['bright', 'red'], ['blue'], ['bright', 'blue']],
@@ -208,22 +233,36 @@ L_DATA = [
     [['red'], ['bright', 'red'], ['blue'], ['bright', 'blue']],
     [(128, 0, 0), (255, 0, 0), (0, 0, 255), (64, 64, 255)],
 ]
+'''
+S_DATA = [
+    [(250, 2, 4), (0, 255, 39), (2, 128, 0), (44, 33, 255)],
+    [['red'], ['bright', 'green'], ['green'], ['bright', 'blue']],
+]
+L_DATA = [
+    [['red'], ['bright', 'green'], ['green'], ['bright', 'blue']],
+    [(250, 2, 4), (0, 255, 39), (2, 128, 0), (44, 33, 255)],
+]
 
 
 def matrix(inputs, outputs, vec, get_log_prob):
     def thunk(model):
         mat = []
-        for i in inputs:
+        est_diag_log_prob = 0.0
+        for i, inp in enumerate(inputs):
             row = []
             total_prob = 0.0
-            for o in outputs:
-                prob = get_log_prob(model, i, o, vec)
+            for j, out in enumerate(outputs):
+                prob = get_log_prob(model, inp, out, vec)
                 row.append(prob)
                 total_prob += prob
+                if i == j:
+                    est_diag_log_prob += np.log(prob)
             # row.append(1.0 - total_prob)
-            mat.append(np.array(row) / total_prob)
+            # mat.append(np.array(row) / total_prob)
+            mat.append(np.array(row))
         # print(mat)
         get_log_prob(model, inputs[0], outputs[0], vec, verbose=True)
+        print('Estimated diagonal log prob: %s' % est_diag_log_prob)
         return np.array(mat)
     return thunk
 
@@ -257,28 +296,46 @@ class DynamicGraph(object):
 
 def build_model_listener(vec):
     cell_size = 20  # 512
-    input_var = T.tensor3('inputs')
-    target_var = T.matrix('targets')
+    input_var = T.imatrix('inputs')
+    target_var = T.ivector('targets')
 
-    l_in = InputLayer(shape=(None, vec.max_len, len(vec.tokens)), input_var=input_var)
-    l_lstm1 = LSTMLayer(l_in, num_units=cell_size)
+    l_in = InputLayer(shape=(None, vec.max_len), input_var=input_var)
+    l_in_embed = EmbeddingLayer(l_in, input_size=len(vec.tokens), output_size=cell_size)
+    l_lstm1 = LSTMLayer(l_in_embed, num_units=cell_size)
     l_lstm1_drop = DropoutLayer(l_lstm1, p=0.2)
     l_lstm2 = LSTMLayer(l_lstm1_drop, num_units=cell_size)
     l_lstm2_drop = DropoutLayer(l_lstm2, p=0.2)
 
     l_hidden = DenseLayer(l_lstm2_drop, num_units=cell_size, nonlinearity=None)
     l_hidden_drop = DropoutLayer(l_hidden, p=0.2)
-    l_out = DenseLayer(l_hidden_drop, num_units=3, nonlinearity=None)
+    l_scores = DenseLayer(l_hidden_drop, num_units=NUM_BUCKETS, nonlinearity=None)
+    l_out = NonlinearityLayer(l_scores, nonlinearity=softmax)
 
-    return LasagneModel(input_var, target_var, l_out, loss=squared_error, optimizer=rmsprop)
+    return LasagneModel(input_var, target_var, l_out,
+                        loss=categorical_crossentropy, optimizer=rmsprop)
+
+
+def crossentropy_categorical_1hot_nd(coding_dist, true_idx):
+    '''
+    A n-dimensional generalization of `theano.tensor.nnet.crossentropy_categorical`.
+
+    :param coding_dist: a float tensor with the last dimension equal to the number of categories
+    :param true_idx: an integer tensor with one fewer dimension than `coding_dist`, giving the
+                     indices of the true targets
+    '''
+    if coding_dist.ndim != true_idx.ndim + 1:
+        raise ValueError('`coding_dist` must have one more dimension that `true_idx` '
+                         '(got %s and %s)' % (coding_dist.type, true_idx.type))
+    return crossentropy_categorical_1hot(T.reshape(coding_dist, (-1, T.shape(coding_dist)[-1])),
+                                         true_idx.flatten())
 
 
 def build_model_speaker(vec):
     cell_size = 20  # 512
-    input_var = T.tensor3('inputs')
-    prev_output_var = T.tensor3('previous')
-    mask_var = T.matrix('mask')
-    target_var = T.tensor3('targets')
+    input_var = T.imatrix('inputs')
+    prev_output_var = T.imatrix('previous')
+    mask_var = T.imatrix('mask')
+    target_var = T.imatrix('targets')
 
     '''
     l_in = InputLayer(shape=(None, 3), input_var=input_var)
@@ -288,10 +345,12 @@ def build_model_speaker(vec):
     l_hidden2_drop = DropoutLayer(l_hidden2, p=0.2)
     '''
 
-    l_color = InputLayer(shape=(None, vec.max_len - 1, 3), input_var=input_var)
-    l_prev_out = InputLayer(shape=(None, vec.max_len - 1, len(vec.tokens)),
+    l_color = InputLayer(shape=(None, vec.max_len - 1), input_var=input_var)
+    l_color_embed = EmbeddingLayer(l_color, input_size=NUM_BUCKETS, output_size=cell_size)
+    l_prev_out = InputLayer(shape=(None, vec.max_len - 1),
                             input_var=prev_output_var)
-    l_in = ConcatLayer([l_color, l_prev_out], axis=2)
+    l_prev_embed = EmbeddingLayer(l_prev_out, input_size=len(vec.tokens), output_size=cell_size)
+    l_in = ConcatLayer([l_color_embed, l_prev_embed], axis=2)
     l_mask_in = InputLayer(shape=(None, vec.max_len - 1),
                            input_var=mask_var)
     # l_lstm1 = LSTMLayer(l_in, cell_init=l_hidden2_drop,
@@ -304,7 +363,7 @@ def build_model_speaker(vec):
     l_out = ReshapeLayer(l_softmax, (-1, vec.max_len - 1, len(vec.tokens)))
 
     return LasagneModel([input_var, prev_output_var, mask_var], target_var, l_out,
-                        loss=categorical_crossentropy, optimizer=rmsprop)
+                        loss=crossentropy_categorical_1hot_nd, optimizer=rmsprop)
 
 
 def train_and_evaluate(path, inputs, outputs, listener=False):
@@ -338,6 +397,18 @@ def train_and_evaluate(path, inputs, outputs, listener=False):
     print('Done!')
 
 
+def detect_nan(i, node, fn):
+    if not isinstance(node.op, T.AllocEmpty):
+        for output in fn.outputs:
+            if (not isinstance(output[0], np.random.RandomState) and
+                    np.isnan(output[0]).any()):
+                print('*** NaN detected ***')
+                theano.printing.debugprint(node)
+                print('Inputs : %s' % [input[0] for input in fn.inputs])
+                print('Outputs: %s' % [output[0] for output in fn.outputs])
+                raise AssertionError
+
+
 class LasagneModel(object):
     def __init__(self, input_vars, target_var, l_out, loss, optimizer):
         if not isinstance(input_vars, Sequence):
@@ -348,8 +419,13 @@ class LasagneModel(object):
         mean_loss = loss(prediction, target_var).mean()
         params = get_all_params(l_out, trainable=True)
         updates = optimizer(mean_loss, params, learning_rate=0.001)
-        self.train_fn = theano.function(input_vars + [target_var], mean_loss, updates=updates)
-        self.predict_fn = theano.function(input_vars, test_prediction)
+        if DETECT_NANS:
+            mode = MonitorMode(post_func=detect_nan)
+        else:
+            mode = None
+        self.train_fn = theano.function(input_vars + [target_var], mean_loss, updates=updates,
+                                        mode=mode)
+        self.predict_fn = theano.function(input_vars, test_prediction, mode=mode)
 
     def fit(self, Xs, y, batch_size, nb_epoch):
         if not isinstance(Xs, Sequence):
@@ -389,7 +465,7 @@ class LasagneModel(object):
 
 
 def main():
-    for labels, listener in [(S_DATA, False)]:  # [(L_DATA, True), (S_DATA, False)]:
+    for labels, listener in [(L_DATA, True), (S_DATA, False)]:
         path = 'toy_data_color.txt'
         inputs, outputs = labels
         train_and_evaluate(path, inputs, outputs, listener=listener)
