@@ -94,9 +94,16 @@ def get_bucket_dims(bucket):
 
 def sample_from_bucket(bucket):
     bucket_dims = get_bucket_dims(bucket)
-    print('bucket_dims: %s' % (bucket_dims,))
     return tuple(np.random.randint(d * size, (d + 1) * size)
                  for d, size in zip(bucket_dims, BUCKET_SIZES))
+
+
+def strip_invalid_tokens(sentence):
+    good_tokens = [t for t in sentence if t not in ('<s>', '<MASK>')]
+    if '</s>' in good_tokens:
+        end_pos = good_tokens.index('</s>')
+        good_tokens = good_tokens[:end_pos]
+    return good_tokens
 
 
 def sample(a, temperature=1.0):
@@ -471,18 +478,17 @@ class SpeakerModel(object):
         return LasagneModel([input_var, prev_output_var, mask_var], target_var, l_out,
                             loss=crossentropy_categorical_1hot_nd, optimizer=rmsprop)
 
-    def get_log_prob(self, model, input, output, vec, verbose=False):
-        if verbose:
-            print('input = %s, output = %s' % (input, output))
-        full = ['<s>'] + output + ['</s>'] + ['<MASK>'] * (vec.max_len - 2 - len(output))
-        prev = full[:-1]
-        next = full[1:]
-        c = np.array([[get_bucket(input)] * (vec.max_len - 1)], dtype=np.int32)
-        P = np.zeros((1, vec.max_len - 1), dtype=np.int32)
-        mask = np.zeros((1, vec.max_len - 1), dtype=np.int32)
-        for t, (in_token, out_token) in enumerate(zip(prev, next)):
-            P[0, t] = vec.token_indices[in_token]
-            mask[0, t] = (out_token != '<MASK>')
+    def get_predictions(self, inputs, prevs, lengths=None, verbose=False):
+        if lengths is None:
+            lengths = [len(p) + 1 for p in prevs]
+        c = np.zeros((len(inputs), self.vec.max_len - 1), dtype=np.int32)
+        P = np.zeros((len(inputs), self.vec.max_len - 1), dtype=np.int32)
+        mask = np.zeros((len(inputs), self.vec.max_len - 1), dtype=np.int32)
+        for i, (inp, prev, length) in enumerate(zip(inputs, prevs, lengths)):
+            c[i, :] = get_bucket(inp)
+            for t, in_token in enumerate(prev):
+                P[i, t] = self.vec.token_indices[in_token]
+                mask[i, t] = (t <= length)
         if verbose and False:
             print('c:')
             print(c)
@@ -490,7 +496,15 @@ class SpeakerModel(object):
             print(P)
             print('mask:')
             print(mask)
-        preds = model.predict([c, P, mask], verbose=0)
+        return self.model.predict([c, P, mask], verbose=0)
+
+    def get_log_prob(self, model, input, output, vec, verbose=False):
+        full = ['<s>'] + output + ['</s>'] + ['<MASK>'] * (vec.max_len - 2 - len(output))
+        prev = full[:-1]
+        next = full[1:]
+        if verbose:
+            print('input = %s, output = %s' % (input, output))
+        preds = self.get_predictions([input], prevs=[prev], lengths=[len(output)], verbose=verbose)
         # if verbose:
         #     print('preds for %s: %s' % (input, preds))
         log_prob = 1.0
@@ -500,11 +514,23 @@ class SpeakerModel(object):
         return log_prob
 
     def sample(self, inputs):
-        # TODO
-        return [[]] * len(inputs)
+        done = np.zeros((len(inputs),), dtype=np.bool)
+        outputs = [['<s>'] for _ in inputs]
+        length = 0
+        while not done.all() and length < self.vec.max_len - 1:
+            preds = self.get_predictions(inputs, prevs=outputs)
+            indices = sample(preds[:, length, :])
+            for out, idx in zip(outputs, indices):
+                out.append(self.vec.indices_token[idx])
+            done = np.logical_or(done, indices == self.vec.token_indices['</s>'])
+            length += 1
+        return [strip_invalid_tokens(o) for o in outputs]
 
     def sample_prior(self, num_samples):
-        return [tuple(np.random.randint(0, 255) for _ in range(3))
+        # return [tuple(np.random.randint(0, 255) for _ in range(3))
+        #         for _ in range(num_samples)]
+        colors = S_DATA[0]
+        return [colors[np.random.randint(len(colors))]
                 for _ in range(num_samples)]
 
 
