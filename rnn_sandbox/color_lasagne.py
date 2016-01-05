@@ -30,7 +30,7 @@ from visualization import plot_matrix
 STEP = 1
 RESOLUTION = (4, 4, 4)
 NUM_BUCKETS = reduce(operator.mul, RESOLUTION)
-BUCKET_SIZE = tuple(256 // r for r in RESOLUTION)
+BUCKET_SIZES = tuple(256 // r for r in RESOLUTION)
 STDEV = 10.0
 
 DETECT_NANS = False
@@ -78,145 +78,59 @@ def get_vectorization(examples):
 
 
 def get_bucket(color):
-    bucket_dims = [e // r for e, r in zip(color, BUCKET_SIZE)]
+    bucket_dims = [e // r for e, r in zip(color, BUCKET_SIZES)]
     return (bucket_dims[0] * RESOLUTION[1] * RESOLUTION[2] +
             bucket_dims[1] * RESOLUTION[2] +
             bucket_dims[2])
 
 
-def data_to_arrays_listener(path):
-    examples = get_examples(path)
-    vec = get_vectorization(examples)
-
-    sentences = []
-    colors = []
-    for i, (color, desc) in enumerate(examples):
-        s = ['<s>'] * (vec.max_len - 1 - len(desc)) + desc
-        s.append('</s>')
-        print('%s -> %s' % (repr(s), repr(color)))
-        sentences.append(s)
-        colors.append(color)
-    print('nb sequences:', len(sentences))
-
-    print('Vectorization...')
-    X = np.zeros((len(sentences), vec.max_len), dtype=np.int32)
-    y = np.zeros((len(sentences),), dtype=np.int32)
-    for i, sentence in enumerate(sentences):
-        for t, token in enumerate(sentence):
-            X[i, t] = vec.token_indices[token]
-        y[i] = get_bucket(colors[i])
-
-    print('X:')
-    print(X)
-    print('y:')
-    print(y)
-    return X, y, vec
+def get_bucket_dims(bucket):
+    return (
+        (bucket / (RESOLUTION[1] * RESOLUTION[2]) % RESOLUTION[0]),
+        (bucket / RESOLUTION[2]) % RESOLUTION[1],
+        bucket % RESOLUTION[2],
+    )
 
 
-def data_to_arrays_speaker(path):
-    examples = get_examples(path)
-    vec = get_vectorization(examples)
-
-    colors = []
-    previous = []
-    next_tokens = []
-    for i, (color, desc) in enumerate(examples):
-        full = ['<s>'] + desc + ['</s>'] + ['<MASK>'] * (vec.max_len - 2 - len(desc))
-        prev = full[:-1]
-        next = full[1:]
-        print('%s, %s -> %s' % (repr(color), repr(prev), repr(next)))
-        colors.append(color)
-        previous.append(prev)
-        next_tokens.append(next)
-    print('number of sequences:', len(colors))
-
-    print('Vectorization...')
-    c = np.zeros((len(colors),), dtype=np.int32)
-    P = np.zeros((len(previous), vec.max_len - 1), dtype=np.int32)
-    mask = np.zeros((len(previous), vec.max_len - 1), dtype=np.int32)
-    N = np.zeros((len(next_tokens), vec.max_len - 1), dtype=np.int32)
-    for i, (color, prev, next) in enumerate(zip(colors, previous, next_tokens)):
-        c[i] = get_bucket(colors[i])
-        for t, token in enumerate(prev):
-            P[i, t] = vec.token_indices[token]
-        for t, token in enumerate(next):
-            N[i, t] = vec.token_indices[token]
-            mask[i, t] = (token != '<MASK>')
-    c = np.tile(c[:, np.newaxis], [1, vec.max_len - 1])
-
-    print('c:')
-    print(c)
-    print('P:')
-    print(P)
-    print('mask:')
-    print(mask)
-    print('N:')
-    print(N)
-    return (c, P, mask), N, vec
+def sample_from_bucket(bucket):
+    bucket_dims = get_bucket_dims(bucket)
+    print('bucket_dims: %s' % (bucket_dims,))
+    return tuple(np.random.randint(d * size, (d + 1) * size)
+                 for d, size in zip(bucket_dims, BUCKET_SIZES))
 
 
 def sample(a, temperature=1.0):
-    # helper function to sample an index from a probability array
-    a = np.log(a) / temperature
-    a = np.exp(a) / np.sum(np.exp(a))
-    return np.argmax(np.random.multinomial(1, a, 1))
+    a = np.array(a)
+    if len(a.shape) < 1:
+        raise ValueError('scalar is not a valid probability distribution')
+    elif len(a.shape) == 1:
+        # helper function to sample an index from a probability array
+        a = np.log(a) / temperature
+        a = np.exp(a) / np.sum(np.exp(a))
+        return np.argmax(np.random.multinomial(1, a, 1))
+    else:
+        return np.array([sample(s, temperature) for s in a])
 
 
 NUM_ITERS = 80
 NUM_EPOCHS = 100
 
 
-def train(model, X, y, mat_fn):
+def train(agent, X, y, mat_fn):
     print('Training started...')
     # train the model, output generated text after each iteration
     for iteration in range(1, NUM_ITERS):
         print()
         print('-' * 50)
         print('Iteration %d' % iteration)
-        history = model.fit(X, y, batch_size=128, nb_epoch=NUM_EPOCHS)
+        history = agent.model.fit(X, y, batch_size=128, nb_epoch=NUM_EPOCHS)
         mean_loss = np.mean(history['loss'])
         print('Mean loss: %s' % mean_loss)
-        yield (mean_loss, mat_fn(model))
-
-
-def get_log_prob_listener(model, input, output, vec, verbose=False):
-    sentence = ['<s>'] * (vec.max_len - 1 - len(input)) + input + ['</s>']
-    x = np.zeros((1, vec.max_len), dtype=np.int32)
-    for t, in_token in enumerate(sentence):
-        x[0, t] = vec.token_indices[in_token]
-    preds = model.predict(x, verbose=0)
-    # if verbose:
-    #     print('preds for %s: %s' % (input, preds))
-    return preds[0, get_bucket(output)]
-
-
-def get_log_prob_speaker(model, input, output, vec, verbose=False):
-    if verbose:
-        print('input = %s, output = %s' % (input, output))
-    full = ['<s>'] + output + ['</s>'] + ['<MASK>'] * (vec.max_len - 2 - len(output))
-    prev = full[:-1]
-    next = full[1:]
-    c = np.array([[get_bucket(input)] * (vec.max_len - 1)], dtype=np.int32)
-    P = np.zeros((1, vec.max_len - 1), dtype=np.int32)
-    mask = np.zeros((1, vec.max_len - 1), dtype=np.int32)
-    for t, (in_token, out_token) in enumerate(zip(prev, next)):
-        P[0, t] = vec.token_indices[in_token]
-        mask[0, t] = (out_token != '<MASK>')
-    if verbose and False:
-        print('c:')
-        print(c)
-        print('P:')
-        print(P)
-        print('mask:')
-        print(mask)
-    preds = model.predict([c, P, mask], verbose=0)
-    # if verbose:
-    #     print('preds for %s: %s' % (input, preds))
-    log_prob = 1.0
-    for t, out_token in enumerate(next):
-        if out_token != '<MASK>':
-            log_prob *= preds[0, t, vec.token_indices[out_token]]
-    return log_prob
+        print('Samples:')
+        inputs = agent.sample_prior(10)
+        for inp, out in zip(inputs, agent.sample(inputs)):
+            print('%s -> %s' % (inp, out))
+        yield (mean_loss, mat_fn(agent.model))
 
 
 '''
@@ -294,27 +208,6 @@ class DynamicGraph(object):
         return self.line, self.mat_ax
 
 
-def build_model_listener(vec):
-    cell_size = 20  # 512
-    input_var = T.imatrix('inputs')
-    target_var = T.ivector('targets')
-
-    l_in = InputLayer(shape=(None, vec.max_len), input_var=input_var)
-    l_in_embed = EmbeddingLayer(l_in, input_size=len(vec.tokens), output_size=cell_size)
-    l_lstm1 = LSTMLayer(l_in_embed, num_units=cell_size)
-    l_lstm1_drop = DropoutLayer(l_lstm1, p=0.2)
-    l_lstm2 = LSTMLayer(l_lstm1_drop, num_units=cell_size)
-    l_lstm2_drop = DropoutLayer(l_lstm2, p=0.2)
-
-    l_hidden = DenseLayer(l_lstm2_drop, num_units=cell_size, nonlinearity=None)
-    l_hidden_drop = DropoutLayer(l_hidden, p=0.2)
-    l_scores = DenseLayer(l_hidden_drop, num_units=NUM_BUCKETS, nonlinearity=None)
-    l_out = NonlinearityLayer(l_scores, nonlinearity=softmax)
-
-    return LasagneModel(input_var, target_var, l_out,
-                        loss=categorical_crossentropy, optimizer=rmsprop)
-
-
 def crossentropy_categorical_1hot_nd(coding_dist, true_idx):
     '''
     A n-dimensional generalization of `theano.tensor.nnet.crossentropy_categorical`.
@@ -330,50 +223,13 @@ def crossentropy_categorical_1hot_nd(coding_dist, true_idx):
                                          true_idx.flatten())
 
 
-def build_model_speaker(vec):
-    cell_size = 20  # 512
-    input_var = T.imatrix('inputs')
-    prev_output_var = T.imatrix('previous')
-    mask_var = T.imatrix('mask')
-    target_var = T.imatrix('targets')
-
-    '''
-    l_in = InputLayer(shape=(None, 3), input_var=input_var)
-    l_hidden1 = DenseLayer(l_in, num_units=cell_size, nonlinearity=tanh)
-    l_hidden1_drop = DropoutLayer(l_hidden1, p=0.2)
-    l_hidden2 = DenseLayer(l_hidden1_drop, num_units=cell_size, nonlinearity=tanh)
-    l_hidden2_drop = DropoutLayer(l_hidden2, p=0.2)
-    '''
-
-    l_color = InputLayer(shape=(None, vec.max_len - 1), input_var=input_var)
-    l_color_embed = EmbeddingLayer(l_color, input_size=NUM_BUCKETS, output_size=cell_size)
-    l_prev_out = InputLayer(shape=(None, vec.max_len - 1),
-                            input_var=prev_output_var)
-    l_prev_embed = EmbeddingLayer(l_prev_out, input_size=len(vec.tokens), output_size=cell_size)
-    l_in = ConcatLayer([l_color_embed, l_prev_embed], axis=2)
-    l_mask_in = InputLayer(shape=(None, vec.max_len - 1),
-                           input_var=mask_var)
-    # l_lstm1 = LSTMLayer(l_in, cell_init=l_hidden2_drop,
-    #                     mask_input=l_mask_in, num_units=cell_size)
-    l_lstm1 = LSTMLayer(l_in, mask_input=l_mask_in, num_units=cell_size)
-    l_lstm1_drop = DropoutLayer(l_lstm1, p=0.2)
-    l_lstm2 = LSTMLayer(l_lstm1_drop, num_units=len(vec.tokens))
-    l_shape = ReshapeLayer(l_lstm2, (-1, len(vec.tokens)))
-    l_softmax = NonlinearityLayer(l_shape, nonlinearity=softmax)
-    l_out = ReshapeLayer(l_softmax, (-1, vec.max_len - 1, len(vec.tokens)))
-
-    return LasagneModel([input_var, prev_output_var, mask_var], target_var, l_out,
-                        loss=crossentropy_categorical_1hot_nd, optimizer=rmsprop)
-
-
 def train_and_evaluate(path, inputs, outputs, listener=False):
-    data_to_arrays = data_to_arrays_listener if listener else data_to_arrays_speaker
-    Xs, y, vec = data_to_arrays(path)
+    agent = ListenerModel() if listener else SpeakerModel()
+    Xs, y, agent.vec = agent.data_to_arrays(path)
 
     # build the model: 2 stacked LSTM
     print('Build model...')
-    build_model = build_model_listener if listener else build_model_speaker
-    model = build_model(vec)
+    agent.model = agent.build_model(agent.vec)
 
     fig, (top, bottom) = plt.subplots(nrows=2)
     graph = DynamicGraph(top, bottom, maxt=NUM_ITERS, xlabels=outputs, ylabels=inputs)
@@ -381,8 +237,7 @@ def train_and_evaluate(path, inputs, outputs, listener=False):
     # pass a generator in "emitter" to produce data for the update func
     print('Build animation...')
     print('graph.update = %s' % repr(graph.update))
-    get_log_prob = get_log_prob_listener if listener else get_log_prob_speaker
-    emitter = lambda: train(model, Xs, y, matrix(inputs, outputs, vec, get_log_prob))
+    emitter = lambda: train(agent, Xs, y, matrix(inputs, outputs, agent.vec, agent.get_log_prob))
     print('emitter = %s' % repr(emitter))
     ani = animation.FuncAnimation(
         fig, graph.update, emitter,
@@ -462,6 +317,195 @@ class LasagneModel(object):
             else:
                 excerpt = slice(start_idx, start_idx + batch_size)
             yield [X[excerpt] for X in inputs], targets[excerpt]
+
+
+class ListenerModel(object):
+    def data_to_arrays(self, path):
+        examples = get_examples(path)
+        vec = get_vectorization(examples)
+
+        sentences = []
+        colors = []
+        for i, (color, desc) in enumerate(examples):
+            s = ['<s>'] * (vec.max_len - 1 - len(desc)) + desc
+            s.append('</s>')
+            print('%s -> %s' % (repr(s), repr(color)))
+            sentences.append(s)
+            colors.append(color)
+        print('nb sequences:', len(sentences))
+
+        print('Vectorization...')
+        X = np.zeros((len(sentences), vec.max_len), dtype=np.int32)
+        y = np.zeros((len(sentences),), dtype=np.int32)
+        for i, sentence in enumerate(sentences):
+            for t, token in enumerate(sentence):
+                X[i, t] = vec.token_indices[token]
+            y[i] = get_bucket(colors[i])
+
+        print('X:')
+        print(X)
+        print('y:')
+        print(y)
+        return X, y, vec
+
+    def build_model(self, vec):
+        cell_size = 20  # 512
+        input_var = T.imatrix('inputs')
+        target_var = T.ivector('targets')
+
+        l_in = InputLayer(shape=(None, vec.max_len), input_var=input_var)
+        l_in_embed = EmbeddingLayer(l_in, input_size=len(vec.tokens), output_size=cell_size)
+        l_lstm1 = LSTMLayer(l_in_embed, num_units=cell_size)
+        l_lstm1_drop = DropoutLayer(l_lstm1, p=0.2)
+        l_lstm2 = LSTMLayer(l_lstm1_drop, num_units=cell_size)
+        l_lstm2_drop = DropoutLayer(l_lstm2, p=0.2)
+
+        l_hidden = DenseLayer(l_lstm2_drop, num_units=cell_size, nonlinearity=None)
+        l_hidden_drop = DropoutLayer(l_hidden, p=0.2)
+        l_scores = DenseLayer(l_hidden_drop, num_units=NUM_BUCKETS, nonlinearity=None)
+        l_out = NonlinearityLayer(l_scores, nonlinearity=softmax)
+
+        return LasagneModel(input_var, target_var, l_out,
+                            loss=categorical_crossentropy, optimizer=rmsprop)
+
+    def get_predictions(self, model, inputs, vec):
+        x = np.zeros((len(inputs), vec.max_len), dtype=np.int32)
+        for i, inp in enumerate(inputs):
+            sentence = ['<s>'] * (vec.max_len - 1 - len(inp)) + inp + ['</s>']
+            for t, in_token in enumerate(sentence):
+                x[i, t] = vec.token_indices[in_token]
+        return model.predict(x, verbose=0)
+
+    def get_log_prob(self, model, input, output, vec, verbose=False):
+        preds = self.get_predictions(model, [input], vec)
+        # if verbose:
+        #     print('preds for %s: %s' % (input, preds))
+        return preds[0, get_bucket(output)]
+
+    def sample(self, inputs):
+        preds = self.get_predictions(self.model, inputs, self.vec)
+        buckets = sample(preds)
+        return [sample_from_bucket(b) for b in buckets]
+
+    def sample_prior(self, num_samples):
+        # TODO: language model
+        utterances = L_DATA[0]
+        return [utterances[np.random.randint(len(utterances))]
+                for _ in range(num_samples)]
+
+
+class SpeakerModel(object):
+    def data_to_arrays(self, path):
+        examples = get_examples(path)
+        vec = get_vectorization(examples)
+
+        colors = []
+        previous = []
+        next_tokens = []
+        for i, (color, desc) in enumerate(examples):
+            full = ['<s>'] + desc + ['</s>'] + ['<MASK>'] * (vec.max_len - 2 - len(desc))
+            prev = full[:-1]
+            next = full[1:]
+            print('%s, %s -> %s' % (repr(color), repr(prev), repr(next)))
+            colors.append(color)
+            previous.append(prev)
+            next_tokens.append(next)
+        print('number of sequences:', len(colors))
+
+        print('Vectorization...')
+        c = np.zeros((len(colors),), dtype=np.int32)
+        P = np.zeros((len(previous), vec.max_len - 1), dtype=np.int32)
+        mask = np.zeros((len(previous), vec.max_len - 1), dtype=np.int32)
+        N = np.zeros((len(next_tokens), vec.max_len - 1), dtype=np.int32)
+        for i, (color, prev, next) in enumerate(zip(colors, previous, next_tokens)):
+            c[i] = get_bucket(colors[i])
+            for t, token in enumerate(prev):
+                P[i, t] = vec.token_indices[token]
+            for t, token in enumerate(next):
+                N[i, t] = vec.token_indices[token]
+                mask[i, t] = (token != '<MASK>')
+        c = np.tile(c[:, np.newaxis], [1, vec.max_len - 1])
+
+        print('c:')
+        print(c)
+        print('P:')
+        print(P)
+        print('mask:')
+        print(mask)
+        print('N:')
+        print(N)
+        return (c, P, mask), N, vec
+
+    def build_model(self, vec):
+        cell_size = 20  # 512
+        input_var = T.imatrix('inputs')
+        prev_output_var = T.imatrix('previous')
+        mask_var = T.imatrix('mask')
+        target_var = T.imatrix('targets')
+
+        '''
+        l_in = InputLayer(shape=(None, 3), input_var=input_var)
+        l_hidden1 = DenseLayer(l_in, num_units=cell_size, nonlinearity=tanh)
+        l_hidden1_drop = DropoutLayer(l_hidden1, p=0.2)
+        l_hidden2 = DenseLayer(l_hidden1_drop, num_units=cell_size, nonlinearity=tanh)
+        l_hidden2_drop = DropoutLayer(l_hidden2, p=0.2)
+        '''
+
+        l_color = InputLayer(shape=(None, vec.max_len - 1), input_var=input_var)
+        l_color_embed = EmbeddingLayer(l_color, input_size=NUM_BUCKETS, output_size=cell_size)
+        l_prev_out = InputLayer(shape=(None, vec.max_len - 1),
+                                input_var=prev_output_var)
+        l_prev_embed = EmbeddingLayer(l_prev_out, input_size=len(vec.tokens), output_size=cell_size)
+        l_in = ConcatLayer([l_color_embed, l_prev_embed], axis=2)
+        l_mask_in = InputLayer(shape=(None, vec.max_len - 1),
+                               input_var=mask_var)
+        # l_lstm1 = LSTMLayer(l_in, cell_init=l_hidden2_drop,
+        #                     mask_input=l_mask_in, num_units=cell_size)
+        l_lstm1 = LSTMLayer(l_in, mask_input=l_mask_in, num_units=cell_size)
+        l_lstm1_drop = DropoutLayer(l_lstm1, p=0.2)
+        l_lstm2 = LSTMLayer(l_lstm1_drop, num_units=len(vec.tokens))
+        l_shape = ReshapeLayer(l_lstm2, (-1, len(vec.tokens)))
+        l_softmax = NonlinearityLayer(l_shape, nonlinearity=softmax)
+        l_out = ReshapeLayer(l_softmax, (-1, vec.max_len - 1, len(vec.tokens)))
+
+        return LasagneModel([input_var, prev_output_var, mask_var], target_var, l_out,
+                            loss=crossentropy_categorical_1hot_nd, optimizer=rmsprop)
+
+    def get_log_prob(self, model, input, output, vec, verbose=False):
+        if verbose:
+            print('input = %s, output = %s' % (input, output))
+        full = ['<s>'] + output + ['</s>'] + ['<MASK>'] * (vec.max_len - 2 - len(output))
+        prev = full[:-1]
+        next = full[1:]
+        c = np.array([[get_bucket(input)] * (vec.max_len - 1)], dtype=np.int32)
+        P = np.zeros((1, vec.max_len - 1), dtype=np.int32)
+        mask = np.zeros((1, vec.max_len - 1), dtype=np.int32)
+        for t, (in_token, out_token) in enumerate(zip(prev, next)):
+            P[0, t] = vec.token_indices[in_token]
+            mask[0, t] = (out_token != '<MASK>')
+        if verbose and False:
+            print('c:')
+            print(c)
+            print('P:')
+            print(P)
+            print('mask:')
+            print(mask)
+        preds = model.predict([c, P, mask], verbose=0)
+        # if verbose:
+        #     print('preds for %s: %s' % (input, preds))
+        log_prob = 1.0
+        for t, out_token in enumerate(next):
+            if out_token != '<MASK>':
+                log_prob *= preds[0, t, vec.token_indices[out_token]]
+        return log_prob
+
+    def sample(self, inputs):
+        # TODO
+        return [[]] * len(inputs)
+
+    def sample_prior(self, num_samples):
+        return [tuple(np.random.randint(0, 255) for _ in range(3))
+                for _ in range(num_samples)]
 
 
 def main():
