@@ -27,22 +27,30 @@ class Histogram(object):
     >>> h.get_probs((240.0, 100.0, 40.0))
     [0.0, 0.0, 1.0]
     '''
-    def __init__(self, training_instances, names, granularity=(1, 1, 1)):
+    def __init__(self, training_instances, names,
+                 granularity=(1, 1, 1), use_timing=False):
         self.names = names
         self.buckets = defaultdict(Counter)
         self.bucket_counts = defaultdict(int)
         self.granularity = granularity
+        self.use_timing = use_timing
 
         self.add_data(training_instances)
 
     def add_data(self, training_instances):
-        timing.start_task('Example', len(training_instances))
+        if self.use_timing:
+            timing.start_task('Example', len(training_instances))
+
         for i, inst in enumerate(training_instances):
-            timing.progress(i)
+            if self.use_timing:
+                timing.progress(i)
+
             bucket = self.get_bucket(inst.input)
             self.buckets[bucket][inst.output] += 1
             self.bucket_counts[bucket] += 1
-        timing.end_task()
+
+        if self.use_timing:
+            timing.end_task()
 
     def get_bucket(self, color):
         '''
@@ -90,7 +98,8 @@ class HistogramLearner(Learner):
         timing.start_task('Histogram', len(self.GRANULARITY))
         for i, g in enumerate(self.GRANULARITY):
             timing.progress(i)
-            self.hists.append(Histogram(training_instances, self.names, granularity=g))
+            self.hists.append(Histogram(training_instances, self.names,
+                                        granularity=g, use_timing=True))
         timing.end_task()
 
     def hist_probs(self, color):
