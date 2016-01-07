@@ -9,7 +9,8 @@ import contextlib
 import __builtin__
 
 
-_options_parser = argparse.ArgumentParser(conflict_handler='resolve', add_help=False)
+_options_parser = argparse.ArgumentParser(conflict_handler='resolve', add_help=False,
+                                          formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 _options_parser.add_argument('--run_dir', '-R', type=str, default=None)
 
 
