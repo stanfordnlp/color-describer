@@ -61,31 +61,77 @@ class SequenceVectorizer(object):
 
 
 class ColorVectorizer(object):
+    '''
+    Maps colors to a uniform grid of buckets.
+    '''
     def __init__(self, resolution):
+        '''
+        :param resolution: A length-3 sequence giving numbers of buckets along each
+                           dimension of the RGB grid.
+        '''
         self.resolution = resolution
         self.num_types = reduce(operator.mul, resolution)
         self.bucket_sizes = tuple(256 // r for r in resolution)
 
     def vectorize(self, color):
+        '''
+        :param color: An length-3 vector or 1D array-like object containing
+                      RGB coordinates in the range [0, 256).
+        :return int: The bucket id for `color`
+
+        >>> ColorVectorizer((2, 2, 2)).vectorize((0, 0, 0))
+        0
+        >>> ColorVectorizer((2, 2, 2)).vectorize((255, 0, 0))
+        4
+        '''
         bucket_dims = [e // r for e, r in zip(color, self.bucket_sizes)]
         return (bucket_dims[0] * self.resolution[1] * self.resolution[2] +
                 bucket_dims[1] * self.resolution[2] +
                 bucket_dims[2])
 
-    def vectorize_all(self, colors, random=False):
-        return [self.vectorize(c, random=random) for c in colors]
+    def vectorize_all(self, colors):
+        '''
+        :param colors: A sequence of length-3 vectors or 1D array-like objects containing
+                      RGB coordinates in the range [0, 256).
+        :param random: If true, sample a random color from the bucket
+        :return list(int): The bucket ids for each color in `colors`
+
+        >>> ColorVectorizer((2, 2, 2)).vectorize_all([(0, 0, 0), (255, 0, 0)])
+        [0, 4]
+        '''
+        return [self.vectorize(c) for c in colors]
 
     def unvectorize(self, bucket, random=False):
+        '''
+        :param int bucket: The id of a color bucket
+        :param random: If true, sample a random color from the bucket. Otherwise,
+                       return the center of the bucket.
+        :return tuple(int): A color from the bucket with id `bucket`.
+
+        >>> ColorVectorizer((2, 2, 2)).unvectorize(0)
+        (64, 64, 64)
+        >>> ColorVectorizer((2, 2, 2)).unvectorize(4)
+        (192, 64, 64)
+        '''
         bucket_start = (
             (bucket / (self.resolution[1] * self.resolution[2]) % self.resolution[0]),
             (bucket / self.resolution[2]) % self.resolution[1],
             bucket % self.resolution[2],
         )
         return tuple((np.random.randint(d * size, (d + 1) * size) if random
-                      else (d + size // 2))
+                      else (d * size + size // 2))
                      for d, size in zip(bucket_start, self.bucket_sizes))
 
     def unvectorize_all(self, buckets, random=False):
+        '''
+        :param Sequence(int) buckets: A sequence of ids of color buckets
+        :param random: If true, sample a random color from each bucket. Otherwise,
+                       return the center of the bucket.
+        :return list(tuple(int)): One color from each bucket in `buckets`
+
+        >>> ColorVectorizer((2, 2, 2)).unvectorize_all([0, 4])
+        [(64, 64, 64), (192, 64, 64)]
+        '''
         return [self.unvectorize(b, random=random) for b in buckets]
 
 
