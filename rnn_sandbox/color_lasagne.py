@@ -8,7 +8,8 @@ import operator
 from lasagne.layers import InputLayer, DropoutLayer, DenseLayer, EmbeddingLayer
 from lasagne.layers import ReshapeLayer, NonlinearityLayer, ConcatLayer
 from lasagne.layers import get_output, get_all_params
-from lasagne.layers.recurrent import LSTMLayer
+from lasagne.layers.recurrent import LSTMLayer, Gate
+from lasagne.init import Constant
 from lasagne.objectives import categorical_crossentropy
 from lasagne.nonlinearities import softmax
 from lasagne.updates import rmsprop
@@ -31,9 +32,10 @@ STEP = 1
 RESOLUTION = (4, 4, 4)
 NUM_BUCKETS = reduce(operator.mul, RESOLUTION)
 BUCKET_SIZES = tuple(256 // r for r in RESOLUTION)
-STDEV = 10.0
 
 DETECT_NANS = False
+
+FORGET_BIAS = 5.0
 
 
 Vectorization = namedtuple('Vectorization', (
@@ -131,12 +133,16 @@ def train(agent, X, y, mat_fn):
         print('-' * 50)
         print('Iteration %d' % iteration)
         history = agent.model.fit(X, y, batch_size=128, nb_epoch=NUM_EPOCHS)
-        mean_loss = np.mean(history['loss'])
-        print('Mean loss: %s' % mean_loss)
         print('Samples:')
         inputs = agent.sample_prior(10)
         for inp, out in zip(inputs, agent.sample(inputs)):
             print('%s -> %s' % (inp, out))
+        losses = history['loss']
+        mean_loss = np.mean(history['loss'])
+        last_mean = np.mean(losses[-1])
+        print('Losses: %s' % losses)
+        print('Mean loss: %s' % mean_loss)
+        print('Last mean: %s' % last_mean)
         yield (mean_loss, mat_fn(agent.model))
 
 
@@ -165,7 +171,7 @@ L_DATA = [
 ]
 
 
-def matrix(inputs, outputs, vec, get_log_prob):
+def matrix(inputs, outputs, vec, get_prob):
     def thunk(model):
         mat = []
         est_diag_log_prob = 0.0
@@ -173,7 +179,7 @@ def matrix(inputs, outputs, vec, get_log_prob):
             row = []
             total_prob = 0.0
             for j, out in enumerate(outputs):
-                prob = get_log_prob(model, inp, out, vec)
+                prob = get_prob(model, inp, out, vec)
                 row.append(prob)
                 total_prob += prob
                 if i == j:
@@ -181,9 +187,9 @@ def matrix(inputs, outputs, vec, get_log_prob):
             # row.append(1.0 - total_prob)
             # mat.append(np.array(row) / total_prob)
             mat.append(np.array(row))
-        # print(mat)
-        get_log_prob(model, inputs[0], outputs[0], vec, verbose=True)
-        print('Estimated diagonal log prob: %s' % est_diag_log_prob)
+        print('log(mat): %s' % np.log(mat))
+        get_prob(model, inputs[0], outputs[0], vec, verbose=True)
+        print('Estimated diagonal loss: %s' % (est_diag_log_prob / len(inputs)))
         return np.array(mat)
     return thunk
 
@@ -244,7 +250,7 @@ def train_and_evaluate(path, inputs, outputs, listener=False):
     # pass a generator in "emitter" to produce data for the update func
     print('Build animation...')
     print('graph.update = %s' % repr(graph.update))
-    emitter = lambda: train(agent, Xs, y, matrix(inputs, outputs, agent.vec, agent.get_log_prob))
+    emitter = lambda: train(agent, Xs, y, matrix(inputs, outputs, agent.vec, agent.get_prob))
     print('emitter = %s' % repr(emitter))
     ani = animation.FuncAnimation(
         fig, graph.update, emitter,
@@ -279,14 +285,19 @@ class LasagneModel(object):
         prediction = get_output(l_out)
         test_prediction = get_output(l_out, deterministic=True)
         mean_loss = loss(prediction, target_var).mean()
+        test_losses = loss(test_prediction, target_var)
         params = get_all_params(l_out, trainable=True)
         updates = optimizer(mean_loss, params, learning_rate=0.001)
         if DETECT_NANS:
             mode = MonitorMode(post_func=detect_nan)
         else:
             mode = None
+        print('Compiling training function')
         self.train_fn = theano.function(input_vars + [target_var], mean_loss, updates=updates,
                                         mode=mode)
+        print('Compiling loss function')
+        self.loss_fn = theano.function(input_vars + [target_var], test_losses, mode=mode)
+        print('Compiling prediction function')
         self.predict_fn = theano.function(input_vars, test_prediction, mode=mode)
 
     def fit(self, Xs, y, batch_size, nb_epoch):
@@ -298,7 +309,8 @@ class LasagneModel(object):
             for i, batch in enumerate(self.minibatches(Xs, y, batch_size, shuffle=True)):
                 print('Epoch %d of %d minibatch %d\r' % (epoch + 1, nb_epoch, i), end='')
                 inputs, targets = batch
-                loss_epoch.append(self.train_fn(*inputs + [targets]))
+                self.train_fn(*inputs + [targets])
+                loss_epoch.append(self.loss_fn(*inputs + [targets]))
             loss_history.append(loss_epoch)
         print('')
         return {
@@ -362,9 +374,11 @@ class ListenerModel(object):
 
         l_in = InputLayer(shape=(None, vec.max_len), input_var=input_var)
         l_in_embed = EmbeddingLayer(l_in, input_size=len(vec.tokens), output_size=cell_size)
-        l_lstm1 = LSTMLayer(l_in_embed, num_units=cell_size)
+        l_lstm1 = LSTMLayer(l_in_embed, num_units=cell_size,
+                            forgetgate=Gate(b=Constant(FORGET_BIAS)))
         l_lstm1_drop = DropoutLayer(l_lstm1, p=0.2)
-        l_lstm2 = LSTMLayer(l_lstm1_drop, num_units=cell_size)
+        l_lstm2 = LSTMLayer(l_lstm1_drop, num_units=cell_size,
+                            forgetgate=Gate(b=Constant(FORGET_BIAS)))
         l_lstm2_drop = DropoutLayer(l_lstm2, p=0.2)
 
         l_hidden = DenseLayer(l_lstm2_drop, num_units=cell_size, nonlinearity=None)
@@ -383,7 +397,7 @@ class ListenerModel(object):
                 x[i, t] = vec.token_indices[in_token]
         return model.predict(x, verbose=0)
 
-    def get_log_prob(self, model, input, output, vec, verbose=False):
+    def get_prob(self, model, input, output, vec, verbose=False):
         preds = self.get_predictions(model, [input], vec)
         # if verbose:
         #     print('preds for %s: %s' % (input, preds))
@@ -468,9 +482,11 @@ class SpeakerModel(object):
                                input_var=mask_var)
         # l_lstm1 = LSTMLayer(l_in, cell_init=l_hidden2_drop,
         #                     mask_input=l_mask_in, num_units=cell_size)
-        l_lstm1 = LSTMLayer(l_in, mask_input=l_mask_in, num_units=cell_size)
+        l_lstm1 = LSTMLayer(l_in, mask_input=l_mask_in, num_units=cell_size,
+                            forgetgate=Gate(b=Constant(FORGET_BIAS)))
         l_lstm1_drop = DropoutLayer(l_lstm1, p=0.2)
-        l_lstm2 = LSTMLayer(l_lstm1_drop, num_units=len(vec.tokens))
+        l_lstm2 = LSTMLayer(l_lstm1_drop, num_units=len(vec.tokens),
+                            forgetgate=Gate(b=Constant(FORGET_BIAS)))
         l_shape = ReshapeLayer(l_lstm2, (-1, len(vec.tokens)))
         l_softmax = NonlinearityLayer(l_shape, nonlinearity=softmax)
         l_out = ReshapeLayer(l_softmax, (-1, vec.max_len - 1, len(vec.tokens)))
@@ -498,7 +514,7 @@ class SpeakerModel(object):
             print(mask)
         return self.model.predict([c, P, mask], verbose=0)
 
-    def get_log_prob(self, model, input, output, vec, verbose=False):
+    def get_prob(self, model, input, output, vec, verbose=False):
         full = ['<s>'] + output + ['</s>'] + ['<MASK>'] * (vec.max_len - 2 - len(output))
         prev = full[:-1]
         next = full[1:]
@@ -507,11 +523,14 @@ class SpeakerModel(object):
         preds = self.get_predictions([input], prevs=[prev], lengths=[len(output)], verbose=verbose)
         # if verbose:
         #     print('preds for %s: %s' % (input, preds))
-        log_prob = 1.0
+        prob = 1.0
+        print('vec.indices_token = %s' % (vec.indices_token,))
         for t, out_token in enumerate(next):
             if out_token != '<MASK>':
-                log_prob *= preds[0, t, vec.token_indices[out_token]]
-        return log_prob
+                token_prob = preds[0, t, vec.token_indices[out_token]]
+                prob *= token_prob
+                print('%s[%s]: %s' % (out_token, vec.token_indices[out_token], np.log(token_prob)))
+        return prob
 
     def sample(self, inputs):
         done = np.zeros((len(inputs),), dtype=np.bool)
@@ -535,7 +554,7 @@ class SpeakerModel(object):
 
 
 def main():
-    for labels, listener in [(L_DATA, True), (S_DATA, False)]:
+    for labels, listener in [(S_DATA, False)]:  # (L_DATA, True),
         path = 'toy_data_color.txt'
         inputs, outputs = labels
         train_and_evaluate(path, inputs, outputs, listener=listener)
