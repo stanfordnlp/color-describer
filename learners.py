@@ -1,9 +1,17 @@
 from collections import defaultdict, Counter
 import numpy as np
-import json
 
 from bt.learner import Learner
 from bt import timing
+from listener import ListenerLearner
+
+
+def new(key):
+    '''
+    Construct a new learner with the class named by `key`. A list
+    of available learners is in the dictionary `LEARNERS`.
+    '''
+    return LEARNERS[key]()
 
 
 class Histogram(object):
@@ -111,3 +119,9 @@ class HistogramLearner(Learner):
             score.append(-np.log(prob))
         timing.end_task()
         return predict, score
+
+
+LEARNERS = {
+    'Histogram': HistogramLearner,
+    'Listener': ListenerLearner,
+}
