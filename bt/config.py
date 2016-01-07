@@ -9,14 +9,16 @@ import contextlib
 import __builtin__
 
 
-_options_parser = argparse.ArgumentParser(conflict_handler='resolve')
+_options_parser = argparse.ArgumentParser(conflict_handler='resolve', add_help=False)
 _options_parser.add_argument('--run_dir', '-R', type=str, default=None)
+
 
 def get_options_parser():
     return _options_parser
 
 
 _options = None
+
 
 def options(allow_partial=False):
     global _options
@@ -28,6 +30,9 @@ def options(allow_partial=False):
         return opts
 
     if _options is None:
+        # Add back in the help option (only show help and quit once arguments are finalized)
+        _options_parser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS,
+                                     help='show this help message and exit')
         _options = _options_parser.parse_args()
         dump_pretty(vars(_options), 'config.json')
     return _options
@@ -75,7 +80,8 @@ def boolean(arg):
 
 def redirect_output():
     outfile = get_file_path('stdout.log')
-    if outfile is None: return
+    if outfile is None:
+        return
     logfile.log_stdout_to(outfile)
     logfile.log_stderr_to(get_file_path('stderr.log'))
 
