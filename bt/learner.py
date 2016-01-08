@@ -1,4 +1,8 @@
 class Learner(object):
+    def __init__(self):
+        self.__using_default_separate = False
+        self.__using_default_combined = False
+
     def train(self, training_instances):
         '''
         Fit a model on training data.
@@ -25,7 +29,11 @@ class Learner(object):
 
         :returns: list(output_type)
         '''
-        raise NotImplementedError
+        if self.__using_default_combined:
+            raise NotImplementedError
+
+        self.__using_default_separate = True
+        return self.predict_and_score(eval_instances)[0]
 
     def score(self, eval_instances):
         '''
@@ -40,7 +48,11 @@ class Learner(object):
 
         :returns: list(float)
         '''
-        raise NotImplementedError
+        if self.__using_default_combined:
+            raise NotImplementedError
+
+        self.__using_default_separate = True
+        return self.predict_and_score(eval_instances)[1]
 
     def predict_and_score(self, eval_instances):
         '''
@@ -51,7 +63,8 @@ class Learner(object):
             return (self.predict(eval_instances), self.score(eval_instances))
 
         but subclasses can override this to combine the two calls and reduce
-        duplicated work.
+        duplicated work. Either the two separate methods or this one (or all
+        of them) should be overridden.
 
         :param eval_instances: The data to use to evaluate the model.
             Instances should have at least the `input` and `output` fields
@@ -61,4 +74,8 @@ class Learner(object):
 
         :returns: tuple(list(output_type), list(float))
         '''
+        if self.__using_default_separate:
+            raise NotImplementedError
+
+        self.__using_default_combined = True
         return (self.predict(eval_instances), self.score(eval_instances))
