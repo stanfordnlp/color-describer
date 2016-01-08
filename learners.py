@@ -130,7 +130,50 @@ class HistogramLearner(Learner):
         return predict, score
 
 
+class MostCommonSpeakerLearner(Learner):
+    def __init__(self):
+        self.seen = Counter()
+        self.num_examples = 0
+
+    def train(self, training_instances):
+        timing.start_task('Example', len(training_instances))
+        for i, inst in enumerate(training_instances):
+            timing.progress(i)
+            self.seen.update([inst.output])
+        timing.end_task()
+        self.num_examples += len(training_instances)
+
+    def predict_and_score(self, eval_instances):
+        most_common = self.seen.most_common(1)[0][0]
+        predict = [most_common] * len(eval_instances)
+        score = []
+        timing.start_task('Example', len(eval_instances))
+        for i, inst in enumerate(eval_instances):
+            timing.progress(i)
+            score.append(-np.log(self._get_smoothed_prob(inst.output)))
+        timing.end_task()
+        return predict, score
+
+    def _get_smoothed_prob(self, output):
+        if output in self.seen and self.seen[output] > 1:
+            return (self.seen[output] - 1.0) / self.num_examples
+        else:
+            return 1.0 * len(self.seen) / self.num_examples
+
+
+class RandomListenerLearner(Learner):
+    def train(self, training_instances):
+        pass
+
+    def predict_and_score(self, eval_instances):
+        predict = [(128, 128, 128)] * len(eval_instances)
+        score = [3.0 * np.log(256.0)] * len(eval_instances)
+        return predict, score
+
+
 LEARNERS = {
     'Histogram': HistogramLearner,
     'Listener': ListenerLearner,
+    'MostCommon': MostCommonSpeakerLearner,
+    'Random': RandomListenerLearner,
 }
