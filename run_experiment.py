@@ -16,13 +16,15 @@ parser.add_argument('--test_size', type=int, default=None,
 parser.add_argument('--listener', action='store_true',
                     help='If True, evaluate on listener accuracy (description -> color). '
                          'Otherwise evaluate on speaker accuracy (color -> description).')
+parser.add_argument('--progress_tick', type=int, default=300,
+                    help='The number of seconds between logging progress updates.')
 
 
 def main():
     options = config.options()
     learner = learners.new(options.learner)
 
-    timing.set_resolution(datetime.timedelta(minutes=5))
+    timing.set_resolution(datetime.timedelta(seconds=options.progress_tick))
     timing.start_task('Step', 4)
 
     timing.progress(0)
