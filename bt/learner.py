@@ -70,7 +70,7 @@ class Learner(object):
             Instances should have at least the `input` and `output` fields
             populated. `output` is needed to define which score is to
             be returned.
-        :type eval_instances: list(bt.instance.Instance)
+        :type eval_instances: list(instance.Instance)
 
         :returns: tuple(list(output_type), list(float))
         '''

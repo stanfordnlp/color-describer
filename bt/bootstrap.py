@@ -3,7 +3,7 @@ from scipy.stats import norm
 import numpy as np
 import warnings
 
-from bt.random import get_rng
+from .rng import get_rng
 
 rng = get_rng()
 

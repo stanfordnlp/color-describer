@@ -2,7 +2,7 @@ import numpy as np
 # Bootstrap CI's are not very robust; disabled for now
 # import bootstrap
 
-from bt import config
+from . import config
 
 
 def evaluate(learner, eval_data, metrics, metric_names=None, split_id=None):
@@ -15,14 +15,14 @@ def evaluate(learner, eval_data, metrics, metric_names=None, split_id=None):
     to "{predictions|scores|results}.`split_id`.json" in the run directory.
 
     :param learner: The model to be evaluated.
-    :type learner: bt.learner.Learner
+    :type learner: learner.Learner
 
     :param eval_data: The data to use to evaluate the model.
-    :type eval_data: list(bt.instance.Instance)
+    :type eval_data: list(instance.Instance)
 
     :param metrics: An iterable of functions that defines the standard by
         which predictions are evaluated.
-    :type metrics: Iterable(function(eval_data: list(bt.instance.Instance),
+    :type metrics: Iterable(function(eval_data: list(instance.Instance),
                                      predictions: list(output_type),
                                      scores: list(float)) -> list(float))
     '''
