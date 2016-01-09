@@ -1,7 +1,7 @@
 class Learner(object):
     def __init__(self):
-        self.__using_default_separate = False
-        self.__using_default_combined = False
+        self._using_default_separate = False
+        self._using_default_combined = False
 
     def train(self, training_instances):
         '''
@@ -29,10 +29,10 @@ class Learner(object):
 
         :returns: list(output_type)
         '''
-        if self.__using_default_combined:
+        if self._using_default_combined:
             raise NotImplementedError
 
-        self.__using_default_separate = True
+        self._using_default_separate = True
         return self.predict_and_score(eval_instances)[0]
 
     def score(self, eval_instances):
@@ -48,10 +48,10 @@ class Learner(object):
 
         :returns: list(float)
         '''
-        if self.__using_default_combined:
+        if self._using_default_combined:
             raise NotImplementedError
 
-        self.__using_default_separate = True
+        self._using_default_separate = True
         return self.predict_and_score(eval_instances)[1]
 
     def predict_and_score(self, eval_instances):
@@ -74,8 +74,8 @@ class Learner(object):
 
         :returns: tuple(list(output_type), list(float))
         '''
-        if self.__using_default_separate:
+        if self._using_default_separate:
             raise NotImplementedError
 
-        self.__using_default_combined = True
+        self._using_default_combined = True
         return (self.predict(eval_instances), self.score(eval_instances))
