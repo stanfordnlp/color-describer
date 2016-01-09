@@ -32,6 +32,8 @@ class ArgumentParser(configargparse.Parser):
         elif isinstance(action, argparse._CountAction):
             for _ in range(value):
                 args.append(command_line_key)
+        elif action is not None and value == action.default:
+            pass
         elif isinstance(value, list):
             args.append(command_line_key)
             args.extend([str(e) for e in value])
