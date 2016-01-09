@@ -4,12 +4,17 @@ set -o errexit
 
 # Download LUX (http://mcmahan.io/lux)
 # Includes Munroe color corpus with train/dev/test split
-echo 'Downloading LUX...'
-wget http://paul.rutgers.edu/~bcm84/rugstk_v1.0.tar.gz
-echo 'Extracting...'
-tar xzf rugstk_v1.0.tar.gz
-mv rugstk_v1 rugstk
-rm rugstk_v1.0.tar.gz
+if [ ! -e rugstk ]; then
+  echo 'Downloading LUX...'
+  wget http://paul.rutgers.edu/~bcm84/rugstk_v1.0.tar.gz
+  echo 'Extracting...'
+  tar xzf rugstk_v1.0.tar.gz
+  mv rugstk_v1 rugstk
+  rm rugstk_v1.0.tar.gz
+fi
+
+echo 'Installing Python module dependencies...'
+pip install ConfigArgParse
 
 echo 'Installing testing modules (optional)...'
 pip install nose nose-exclude coverage

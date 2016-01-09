@@ -1,4 +1,5 @@
 import argparse
+import configargparse
 import os
 import sys
 import json
@@ -7,11 +8,67 @@ import traceback
 import StringIO
 import contextlib
 import __builtin__
+from pyhocon import ConfigFactory
 
 
-_options_parser = argparse.ArgumentParser(conflict_handler='resolve', add_help=False,
-                                          formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-_options_parser.add_argument('--run_dir', '-R', type=str, default=None)
+class ArgumentParser(configargparse.Parser):
+    def convert_setting_to_command_line_arg(self, action, key, value):
+        args = []
+        if action is None:
+            command_line_key = \
+                self.get_command_line_key_for_unknown_config_file_setting(key)
+        else:
+            command_line_key = action.option_strings[-1]
+
+        if isinstance(action, argparse._StoreTrueAction):
+            if value is True:
+                args.append(command_line_key)
+        elif isinstance(action, argparse._StoreFalseAction):
+            if value is False:
+                args.append(command_line_key)
+        elif isinstance(action, argparse._StoreConstAction):
+            if value == action.const:
+                args.append(command_line_key)
+        elif isinstance(action, argparse._CountAction):
+            for _ in range(value):
+                args.append(command_line_key)
+        elif isinstance(value, list):
+            args.append(command_line_key)
+            args.extend([str(e) for e in value])
+        else:
+            args.append(command_line_key)
+            args.append(str(value))
+        return args
+
+
+class HoconConfigFileParser(object):
+    def parse(self, stream):
+        try:
+            basedir = os.path.dirname(stream.name)
+        except AttributeError:
+            basedir = os.getcwd()
+        return dict(ConfigFactory.parse_string(stream.read(), basedir=basedir))
+
+    def serialize(self, items):
+        return json.dumps(items, sort_keys=True, indent=2, separators=(',', ': '))
+
+
+_options_parser = ArgumentParser(conflict_handler='resolve', add_help=False,
+                                 config_file_parser=HoconConfigFileParser(),
+                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+_options_parser.add_argument('--run_dir', '-R', type=str, default=None,
+                             help='The directory in which to write log files, parameters, etc. '
+                                  'Will be created if it does not exist. If None, output files '
+                                  'will not be written.')
+_options_parser.add_argument('--config', '-C', default=None, is_config_file=True,
+                             help='Path to a JSON or HOCON file containing option settings. '
+                                  'Can be loaded from the config.json of a previous run to rerun '
+                                  'an experiment. If None, only options given as command line '
+                                  'arguments will be used.')
+_options_parser.add_argument('--overwrite', '-O', action='store_true',
+                             help='If True, allow overwriting the contents of the run directory. '
+                                  'Otherwise, an error will be raised if the run directory '
+                                  'contains a config.json to prevent accidental overwriting. ')
 
 
 def get_options_parser():
@@ -35,14 +92,34 @@ def options(allow_partial=False):
         _options_parser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS,
                                      help='show this help message and exit')
         _options = _options_parser.parse_args()
-        dump_pretty(vars(_options), 'config.json')
+        if _options.run_dir:
+            mkdirp(_options.run_dir, overwrite=_options.overwrite)
+
+        options_dump = vars(_options)
+        # People should be able to rerun an experiment with -C config.json safely.
+        # Don't include the overwrite option, since using a config from an experiment
+        # done with -O should still require passing -O for it to be overwritten again.
+        del options_dump['overwrite']
+        # And don't write the name of the other config file in this new one! It's
+        # probably harmless (config file interpretation can't be chained with the
+        # config option), but still confusing.
+        del options_dump['config']
+        dump_pretty(options_dump, 'config.json')
     return _options
 
 
-def mkdirp(dirname):
+class OverwriteError(Exception):
+    pass
+
+
+def mkdirp(dirname, overwrite=True):
     '''
     Create a directory at the path given by `dirname`, if it doesn't
-    already exist.
+    already exist. If `overwrite` is False, raise an error when trying
+    to create a directory that already has a config.json file in it.
+    Otherwise do nothing if the directory already exists. (Note that an
+    existing directory without a config.json will not raise an error
+    regardless.)
 
     http://stackoverflow.com/a/14364249/4481448
     '''
@@ -51,6 +128,10 @@ def mkdirp(dirname):
     except OSError:
         if not os.path.isdir(dirname):
             raise
+        config_path = os.path.join(dirname, 'config.json')
+        if not overwrite and os.path.lexists(config_path):
+            raise OverwriteError('%s exists and already contains a config.json. To allow '
+                                 'overwriting, pass the -O/--overwrite option.' % dirname)
 
 
 def get_file_path(filename):
