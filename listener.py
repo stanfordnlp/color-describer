@@ -8,49 +8,22 @@ from lasagne.objectives import categorical_crossentropy
 from lasagne.nonlinearities import softmax
 from lasagne.updates import rmsprop
 
-from bt.learner import Learner
-from bt import timing, config
-from neural import LasagneModel, SequenceVectorizer, ColorVectorizer
+from bt import config
+from neural import NeuralLearner, LasagneModel
 
 parser = config.get_options_parser()
-parser.add_argument('--listener_cell_size', default=20)
-parser.add_argument('--listener_forget_bias', default=20)
-parser.add_argument('--listener_color_resolution', default=4)
+parser.add_argument('--listener_cell_size', type=int, default=20)
+parser.add_argument('--listener_forget_bias', type=float, default=5.0)
+parser.add_argument('--listener_color_resolution', type=int, default=4)
 
 
-class ListenerLearner(Learner):
+class ListenerLearner(NeuralLearner):
     '''
     An LSTM-based listener (guesses colors from descriptions).
     '''
-
     def __init__(self):
         options = config.options()
-        res = options.listener_color_resolution
-
-        self.seq_vec = SequenceVectorizer()
-        self.color_vec = ColorVectorizer((res, res, res))
-
-    def train(self, training_instances):
-        options = config.options()
-
-        xs, y = self._data_to_arrays(training_instances)
-        self._build_model()
-
-        print('Training')
-        losses = []
-        timing.start_task('Iteration', options.train_iters)
-        for iteration in range(1, options.train_iters):
-            timing.progress(iteration)
-            losses_iter = self.model.fit(xs, y, batch_size=128, num_epochs=options.train_epochs)
-            losses.append(losses_iter.tolist())
-        timing.end_task()
-        config.dump(losses, 'losses.jsons', lines=True)
-
-    def predict(self, eval_instances):
-        return self.predict_and_score(eval_instances)[0]
-
-    def score(self, eval_instances):
-        return self.predict_and_score(eval_instances)[1]
+        super(ListenerLearner, self).__init__(options.listener_color_resolution)
 
     def predict_and_score(self, eval_instances):
         xs, y = self._data_to_arrays(eval_instances, test=True)

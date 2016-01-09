@@ -6,7 +6,8 @@ from collections import Sequence
 from lasagne.layers import get_output, get_all_params
 from theano.compile import MonitorMode
 
-from bt import config
+from bt import config, timing
+from bt.learner import Learner
 
 parser = config.get_options_parser()
 parser.add_argument('--train_iters', default=10, help='Number of iterations')
@@ -50,7 +51,10 @@ class SequenceVectorizer(object):
     def vectorize(self, sequence):
         return np.array([(self.token_indices[token] if token in self.token_indices
                           else self.token_indices['<unk>'])
-                         for token in sequence])
+                         for token in sequence], dtype=np.int32)
+
+    def vectorize_all(self, sequences):
+        return np.array([self.vectorize(seq) for seq in sequences], dtype=np.int32)
 
     def unvectorize(self, array):
         if hasattr(array, 'tolist'):
@@ -58,6 +62,10 @@ class SequenceVectorizer(object):
         return [(self.unvectorize(elem) if isinstance(elem, Sequence)
                  else self.indices_token[elem])
                 for elem in array]
+
+    def unvectorize_all(self, sequences):
+        # unvectorize already accepts sequences of sequences.
+        return self.unvectorize(sequences)
 
 
 class ColorVectorizer(object):
@@ -94,12 +102,12 @@ class ColorVectorizer(object):
         :param colors: A sequence of length-3 vectors or 1D array-like objects containing
                       RGB coordinates in the range [0, 256).
         :param random: If true, sample a random color from the bucket
-        :return list(int): The bucket ids for each color in `colors`
+        :return array(int32): The bucket ids for each color in `colors`
 
         >>> ColorVectorizer((2, 2, 2)).vectorize_all([(0, 0, 0), (255, 0, 0)])
-        [0, 4]
+        array([0, 4], dtype=int32)
         '''
-        return [self.vectorize(c) for c in colors]
+        return np.array([self.vectorize(c) for c in colors], dtype=np.int32)
 
     def unvectorize(self, bucket, random=False):
         '''
@@ -188,3 +196,32 @@ class LasagneModel(object):
             else:
                 excerpt = slice(start_idx, start_idx + batch_size)
             yield [X[excerpt] for X in inputs], targets[excerpt]
+
+
+class NeuralLearner(Learner):
+    '''
+    A base class for Lasagne-based learners.
+    '''
+
+    def __init__(self, color_resolution):
+        super(NeuralLearner, self).__init__()
+        res = color_resolution
+
+        self.seq_vec = SequenceVectorizer()
+        self.color_vec = ColorVectorizer((res, res, res))
+
+    def train(self, training_instances):
+        options = config.options()
+
+        xs, y = self._data_to_arrays(training_instances)
+        self._build_model()
+
+        print('Training')
+        losses = []
+        timing.start_task('Iteration', options.train_iters)
+        for iteration in range(1, options.train_iters):
+            timing.progress(iteration)
+            losses_iter = self.model.fit(xs, y, batch_size=128, num_epochs=options.train_epochs)
+            losses.append(losses_iter.tolist())
+        timing.end_task()
+        config.dump(losses, 'losses.jsons', lines=True)

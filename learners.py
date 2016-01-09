@@ -4,6 +4,7 @@ import numpy as np
 from bt.learner import Learner
 from bt import timing
 from listener import ListenerLearner
+from speaker import SpeakerLearner
 
 
 def new(key):
@@ -174,6 +175,7 @@ class RandomListenerLearner(Learner):
 LEARNERS = {
     'Histogram': HistogramLearner,
     'Listener': ListenerLearner,
+    'Speaker': SpeakerLearner,
     'MostCommon': MostCommonSpeakerLearner,
     'Random': RandomListenerLearner,
 }
