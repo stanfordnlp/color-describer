@@ -3,6 +3,10 @@ from scipy.stats import norm
 import numpy as np
 import warnings
 
+from bt.random import get_rng
+
+rng = get_rng()
+
 class InstabilityWarning(UserWarning):
     """Issued when results may be unstable."""
     pass
@@ -28,10 +32,10 @@ data: array_like, shape (N, ...) OR tuple of array_like all with shape (N, ...)
     by the multi parameter.
 statfunction: function (data, weights=(weights, optional)) -> value
     This function should accept samples of data from ``data``. It is applied
-    to these samples individually. 
-    
-    If using the ABC method, the function _must_ accept a named ``weights`` 
-    parameter which will be an array_like with weights for each sample, and 
+    to these samples individually.
+
+    If using the ABC method, the function _must_ accept a named ``weights``
+    parameter which will be an array_like with weights for each sample, and
     must return a _weighted_ result. Otherwise this parameter is not used
     or required. Note that numpy's np.average accepts this. (default=np.average)
 alpha: float or iterable, optional
@@ -54,7 +58,7 @@ multi: boolean, optional
     If False, assume data is a single array. If True, assume data is a tuple/other
     iterable of arrays of the same length that should be sampled together. If None,
     decide based on whether the data is an actual tuple. (default=None)
-    
+
 Returns
 -------
 confidences: tuple of floats
@@ -64,8 +68,8 @@ Calculation Methods
 -------------------
 'pi': Percentile Interval (Efron 13.3)
     The percentile interval method simply returns the 100*alphath bootstrap
-    sample's values for the statistic. This is an extremely simple method of 
-    confidence interval calculation. However, it has several disadvantages 
+    sample's values for the statistic. This is an extremely simple method of
+    confidence interval calculation. However, it has several disadvantages
     compared to the bias-corrected accelerated method, which is the default.
 'bca': Bias-Corrected Accelerated Non-Parametric (Efron 14.3) (default)
     This method is much more complex to explain. However, it gives considerably
@@ -74,7 +78,7 @@ Calculation Methods
     weights, the ABC method will give approximated results much, much faster.
 'abc': Approximate Bootstrap Confidence (Efron 14.4, 22.6)
     This method provides approximated bootstrap confidence intervals without
-    actually taking bootstrap samples. This requires that the statistic be 
+    actually taking bootstrap samples. This requires that the statistic be
     smooth, and allow for weighting of individual points with a weights=
     parameter (note that np.average allows this). This is _much_ faster
     than all other methods for situations where it can be used.
@@ -221,15 +225,15 @@ Efron, An Introduction to the Bootstrap. Chapman & Hall 1993
           return abs(statfunction(data)-stat[(nvals, np.indices(nvals.shape)[1:])])[np.newaxis].T
     else:
         raise ValueError("Output option {0} is not supported.".format(output))
-    
-    
+
+
 
 
 
 def ci_abc(data, stat=lambda x,y: np.average(x,weights=y), alpha=0.05, epsilon = 0.001):
     """
 .. note:: Deprecated. This functionality is now rolled into ci.
-          
+
 Given a set of data ``data``, and a statistics function ``statfunction`` that
 applies to that data, computes the non-parametric approximate bootstrap
 confidence (ABC) interval for ``stat`` on that data. Data points are assumed
@@ -343,6 +347,5 @@ samples)
     else:
         raise ValueError("size cannot be {0}".format(size))
     base = np.tile(np.arange(len(data)),(n_samples,1))
-    for sample in base: np.random.shuffle(sample)
+    for sample in base: rng.shuffle(sample)
     return base[:,0:size]
-

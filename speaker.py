@@ -9,13 +9,15 @@ from lasagne.init import Constant
 from lasagne.nonlinearities import softmax
 from lasagne.updates import rmsprop
 
-from bt import config
+from bt import config, random
 from neural import NeuralLearner, LasagneModel
 
 parser = config.get_options_parser()
 parser.add_argument('--speaker_cell_size', type=int, default=20)
 parser.add_argument('--speaker_forget_bias', type=float, default=5.0)
 parser.add_argument('--speaker_color_resolution', type=int, default=4)
+
+rng = random.get_rng()
 
 
 class SpeakerLearner(NeuralLearner):
@@ -139,7 +141,7 @@ def sample(a, temperature=1.0):
         # helper function to sample an index from a probability array
         a = np.log(a) / temperature
         a = np.exp(a) / np.sum(np.exp(a))
-        return np.argmax(np.random.multinomial(1, a, 1))
+        return np.argmax(rng.multinomial(1, a, 1))
     else:
         return np.array([sample(s, temperature) for s in a])
 

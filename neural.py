@@ -1,3 +1,4 @@
+import lasagne
 import numpy as np
 import operator
 import theano
@@ -6,7 +7,7 @@ from collections import Sequence
 from lasagne.layers import get_output, get_all_params
 from theano.compile import MonitorMode
 
-from bt import config, timing
+from bt import config, timing, random
 from bt.learner import Learner
 
 parser = config.get_options_parser()
@@ -16,6 +17,10 @@ parser.add_argument('--train_epochs', type=int, default=100,
                     help='Number of epochs per iteration')
 parser.add_argument('--detect_nans', action='store_true',
                     help='If True, throw an error if a non-finite value is detected.')
+
+
+rng = random.get_rng()
+lasagne.random.set_rng(rng)
 
 
 def detect_nan(i, node, fn):
@@ -128,7 +133,7 @@ class ColorVectorizer(object):
             (bucket / self.resolution[2]) % self.resolution[1],
             bucket % self.resolution[2],
         )
-        return tuple((np.random.randint(d * size, (d + 1) * size) if random
+        return tuple((rng.randint(d * size, (d + 1) * size) if random
                       else (d * size + size // 2))
                      for d, size in zip(bucket_start, self.bucket_sizes))
 
@@ -190,7 +195,7 @@ class LasagneModel(object):
         assert all(len(X) == len(targets) for X in inputs)
         if shuffle:
             indices = np.arange(len(targets))
-            np.random.shuffle(indices)
+            rng.shuffle(indices)
         last_batch = max(0, len(targets) - batch_size)
         for start_idx in range(0, last_batch + 1, batch_size):
             if shuffle:

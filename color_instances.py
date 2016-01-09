@@ -1,5 +1,3 @@
-import numpy as np
-
 try:
     from rugstk.data.munroecorpus import munroecorpus
 except ImportError:
@@ -9,9 +7,10 @@ except ImportError:
     raise
 
 from bt.instance import Instance
+from bt.random import get_rng
 
 
-random = np.random.RandomState(np.uint32(hash('reproducible')))
+random = get_rng()
 
 
 def load_colors(h, s, v):
