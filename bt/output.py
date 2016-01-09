@@ -1,7 +1,5 @@
 import sys
 
-from bt import config
-
 
 def output_results(results, split_id='results', output_stream=None):
     '''
@@ -22,6 +20,6 @@ def output_results(results, split_id='results', output_stream=None):
 
     output_stream.write('----- %s -----\n' % split_id)
     for name in sorted(results.keys()):
-        output_stream.write('%s.%s: %s\n' % (split_id, name, repr(results[name])))
+        output_stream.write('%s: %s\n' % (name, repr(results[name])))
 
     output_stream.flush()
