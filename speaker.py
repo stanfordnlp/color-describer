@@ -13,9 +13,9 @@ from bt import config
 from neural import NeuralLearner, LasagneModel
 
 parser = config.get_options_parser()
-parser.add_argument('--speaker_cell_size', default=20)
-parser.add_argument('--speaker_forget_bias', default=5.0)
-parser.add_argument('--speaker_color_resolution', default=4)
+parser.add_argument('--speaker_cell_size', type=int, default=20)
+parser.add_argument('--speaker_forget_bias', type=float, default=5.0)
+parser.add_argument('--speaker_color_resolution', type=int, default=4)
 
 
 class SpeakerLearner(NeuralLearner):

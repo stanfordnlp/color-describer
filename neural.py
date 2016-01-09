@@ -10,9 +10,11 @@ from bt import config, timing
 from bt.learner import Learner
 
 parser = config.get_options_parser()
-parser.add_argument('--train_iters', default=10, help='Number of iterations')
-parser.add_argument('--train_epochs', default=100, help='Number of epochs per iteration')
-parser.add_argument('--detect_nans', default=False,
+parser.add_argument('--train_iters', type=int, default=10,
+                    help='Number of iterations')
+parser.add_argument('--train_epochs', type=int, default=100,
+                    help='Number of epochs per iteration')
+parser.add_argument('--detect_nans', action='store_true',
                     help='If True, throw an error if a non-finite value is detected.')
 
 
