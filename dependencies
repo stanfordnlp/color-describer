@@ -14,7 +14,7 @@ if [ ! -e rugstk ]; then
 fi
 
 echo 'Installing Python module dependencies...'
-pip install ConfigArgParse
+pip install ConfigArgParse pyhocon
 
 echo 'Installing testing modules (optional)...'
 pip install nose nose-exclude coverage
