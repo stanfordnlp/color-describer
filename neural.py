@@ -7,8 +7,9 @@ from collections import Sequence
 from lasagne.layers import get_output, get_all_params
 from theano.compile import MonitorMode
 
-from bt import config, timing, random
+from bt import config, timing
 from bt.learner import Learner
+from bt.rng import get_rng
 
 parser = config.get_options_parser()
 parser.add_argument('--train_iters', type=int, default=10,
@@ -19,7 +20,7 @@ parser.add_argument('--detect_nans', action='store_true',
                     help='If True, throw an error if a non-finite value is detected.')
 
 
-rng = random.get_rng()
+rng = get_rng()
 lasagne.random.set_rng(rng)
 
 

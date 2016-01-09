@@ -9,7 +9,8 @@ from lasagne.init import Constant
 from lasagne.nonlinearities import softmax
 from lasagne.updates import rmsprop
 
-from bt import config, random
+from bt import config
+from bt.rng import get_rng
 from neural import NeuralLearner, LasagneModel
 
 parser = config.get_options_parser()
@@ -17,7 +18,7 @@ parser.add_argument('--speaker_cell_size', type=int, default=20)
 parser.add_argument('--speaker_forget_bias', type=float, default=5.0)
 parser.add_argument('--speaker_color_resolution', type=int, default=4)
 
-rng = random.get_rng()
+rng = get_rng()
 
 
 class SpeakerLearner(NeuralLearner):

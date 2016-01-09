@@ -1,6 +1,6 @@
 import numpy as np
 
-from bt import config
+from . import config
 
 parser = config.get_options_parser()
 parser.add_argument('--random_seed', default='DefaultRandomSeed',
