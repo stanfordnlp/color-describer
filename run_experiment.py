@@ -1,3 +1,6 @@
+from bt import pick_gpu
+pick_gpu.bind_theano()
+
 from bt import evaluate, metrics, output, timing, config
 import datetime
 import learners
