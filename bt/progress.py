@@ -1,15 +1,15 @@
 """A module for periodically displaying progress on a hierarchy of tasks
 and estimating time to completion.
 
->>> import timing, datetime
->>> timing.set_resolution(datetime.datetime.resolution)  # show all messages, don't sample
->>> timing.start_task('Repetition', 2)
+>>> import progress, datetime
+>>> progress.set_resolution(datetime.datetime.resolution)  # show all messages, don't sample
+>>> progress.start_task('Repetition', 2)
 >>> for rep in range(2):  # doctest: +ELLIPSIS
-...     timing.progress(rep)
-...     timing.start_task('Example', 3)
+...     progress.progress(rep)
+...     progress.start_task('Example', 3)
 ...     for ex in range(3):
-...         timing.progress(ex)
-...     timing.end_task()
+...         progress.progress(ex)
+...     progress.end_task()
 ...
 Repetition 0 of 2 (~0% done, ETA unknown)
 Repetition 0 of 2, Example 0 of 3 (~0% done, ETA unknown)
@@ -21,7 +21,7 @@ Repetition 1 of 2, Example 0 of 3 (~50% done, ETA ...)
 Repetition 1 of 2, Example 1 of 3 (~67% done, ETA ...)
 Repetition 1 of 2, Example 2 of 3 (~83% done, ETA ...)
 Repetition 1 of 2, Example 3 of 3 (~100% done, ETA ...)
->>> timing.end_task()  # doctest: +ELLIPSIS
+>>> progress.end_task()  # doctest: +ELLIPSIS
 Repetition 2 of 2 (~100% done, ETA ...)
 """
 
@@ -36,16 +36,16 @@ class ProgressMonitor(object):
         self.last_report = datetime.datetime.min
         self.resolution = resolution
         self.start_time = datetime.datetime.now()
-    
+
     def start_task(self, name, size):
         if len(self.task_stack) == 0:
             self.start_time = datetime.datetime.now()
         self.task_stack.append(Task(name, size, 0))
-    
+
     def progress(self, p):
         self.task_stack[-1] = self.task_stack[-1]._replace(progress=p)
         self.progress_report()
-    
+
     def end_task(self):
         self.progress(self.task_stack[-1].size)
         self.task_stack.pop()
@@ -57,7 +57,7 @@ class ProgressMonitor(object):
 
         stack_printout = ', '.join('%s %s of %s' % (t.name, t.progress, t.size)
                                    for t in self.task_stack)
-        
+
         frac_done = self.fraction_done()
         if frac_done == 0.0:
             eta_str = 'unknown'
@@ -66,12 +66,12 @@ class ProgressMonitor(object):
             estimated_length = elapsed.total_seconds() / frac_done
             eta = self.start_time + datetime.timedelta(seconds=estimated_length)
             eta_str = eta.strftime('%c')
-        
+
         print '%s (~%d%% done, ETA %s)' % (stack_printout,
                                            round(frac_done * 100.0),
                                            eta_str)
         self.last_report = datetime.datetime.now()
-    
+
     def fraction_done(self, start=0.0, finish=1.0, stack=None):
         if stack is None:
             stack = self.task_stack
@@ -84,7 +84,7 @@ class ProgressMonitor(object):
             inner_start = start + top_fraction * (finish - start)
             inner_finish = start + next_top_fraction * (finish - start)
             return self.fraction_done(inner_start, inner_finish, stack[1:])
-        
+
 
 
 Task = namedtuple('Task', ('name', 'size', 'progress'))

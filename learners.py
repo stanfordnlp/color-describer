@@ -2,7 +2,7 @@ from collections import defaultdict, Counter
 import numpy as np
 
 from bt.learner import Learner
-from bt import timing
+from bt import progress
 from listener import ListenerLearner
 from speaker import SpeakerLearner
 
@@ -29,29 +29,29 @@ class Histogram(object):
     [0.0, 0.0, 1.0]
     '''
     def __init__(self, training_instances, names,
-                 granularity=(1, 1, 1), use_timing=False):
+                 granularity=(1, 1, 1), use_progress=False):
         self.names = names
         self.buckets = defaultdict(Counter)
         self.bucket_counts = defaultdict(int)
         self.granularity = granularity
-        self.use_timing = use_timing
+        self.use_progress = use_progress
 
         self.add_data(training_instances)
 
     def add_data(self, training_instances):
-        if self.use_timing:
-            timing.start_task('Example', len(training_instances))
+        if self.use_progress:
+            progress.start_task('Example', len(training_instances))
 
         for i, inst in enumerate(training_instances):
-            if self.use_timing:
-                timing.progress(i)
+            if self.use_progress:
+                progress.progress(i)
 
             bucket = self.get_bucket(inst.input)
             self.buckets[bucket][inst.output] += 1
             self.bucket_counts[bucket] += 1
 
-        if self.use_timing:
-            timing.end_task()
+        if self.use_progress:
+            progress.end_task()
 
     def get_bucket(self, color):
         '''
@@ -96,12 +96,12 @@ class HistogramLearner(Learner):
         self.name_to_index = defaultdict(lambda: -1,
                                          {n: i for i, n in enumerate(self.names)})
         self.hists = []
-        timing.start_task('Histogram', len(self.GRANULARITY))
+        progress.start_task('Histogram', len(self.GRANULARITY))
         for i, g in enumerate(self.GRANULARITY):
-            timing.progress(i)
+            progress.progress(i)
             self.hists.append(Histogram(training_instances, self.names,
-                                        granularity=g, use_timing=True))
-        timing.end_task()
+                                        granularity=g, use_progress=True))
+        progress.end_task()
 
     def hist_probs(self, color):
         assert self.hists, \
@@ -119,15 +119,15 @@ class HistogramLearner(Learner):
     def predict_and_score(self, eval_instances):
         predict = []
         score = []
-        timing.start_task('Example', len(eval_instances))
+        progress.start_task('Example', len(eval_instances))
         for i, inst in enumerate(eval_instances):
-            timing.progress(i)
+            progress.progress(i)
             hist_probs = self.hist_probs(inst.input)
             name = self.names[hist_probs.argmax()]
             prob = hist_probs[self.name_to_index[inst.output]]
             predict.append(name)
             score.append(-np.log(prob))
-        timing.end_task()
+        progress.end_task()
         return predict, score
 
 
@@ -137,22 +137,22 @@ class MostCommonSpeakerLearner(Learner):
         self.num_examples = 0
 
     def train(self, training_instances):
-        timing.start_task('Example', len(training_instances))
+        progress.start_task('Example', len(training_instances))
         for i, inst in enumerate(training_instances):
-            timing.progress(i)
+            progress.progress(i)
             self.seen.update([inst.output])
-        timing.end_task()
+        progress.end_task()
         self.num_examples += len(training_instances)
 
     def predict_and_score(self, eval_instances):
         most_common = self.seen.most_common(1)[0][0]
         predict = [most_common] * len(eval_instances)
         score = []
-        timing.start_task('Example', len(eval_instances))
+        progress.start_task('Example', len(eval_instances))
         for i, inst in enumerate(eval_instances):
-            timing.progress(i)
+            progress.progress(i)
             score.append(-np.log(self._get_smoothed_prob(inst.output)))
-        timing.end_task()
+        progress.end_task()
         return predict, score
 
     def _get_smoothed_prob(self, output):
