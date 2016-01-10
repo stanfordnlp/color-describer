@@ -54,6 +54,11 @@ class HoconConfigFileParser(object):
     def serialize(self, items):
         return json.dumps(items, sort_keys=True, indent=2, separators=(',', ': '))
 
+    def get_syntax_description(self):
+        return ('Config files should use HOCON syntax. HOCON is a superset of '
+                'JSON; for more, see '
+                '<https://github.com/typesafehub/config/blob/master/HOCON.md>.')
+
 
 _options_parser = ArgumentParser(conflict_handler='resolve', add_help=False,
                                  config_file_parser=HoconConfigFileParser(),
