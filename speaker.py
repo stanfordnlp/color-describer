@@ -11,7 +11,7 @@ from lasagne.updates import rmsprop
 
 from bt import config
 from bt.rng import get_rng
-from neural import NeuralLearner, LasagneModel
+from neural import NeuralLearner, SimpleLasagneModel
 
 parser = config.get_options_parser()
 parser.add_argument('--speaker_cell_size', type=int, default=20)
@@ -134,8 +134,8 @@ class SpeakerLearner(NeuralLearner):
         l_softmax = NonlinearityLayer(l_shape, nonlinearity=softmax)
         l_out = ReshapeLayer(l_softmax, (-1, self.seq_vec.max_len - 1, len(self.seq_vec.tokens)))
 
-        self.model = LasagneModel([input_var, prev_output_var, mask_var], target_var, l_out,
-                                  loss=crossentropy_categorical_1hot_nd, optimizer=rmsprop)
+        self.model = SimpleLasagneModel([input_var, prev_output_var, mask_var], target_var, l_out,
+                                        loss=crossentropy_categorical_1hot_nd, optimizer=rmsprop)
 
 
 def sample(a, temperature=1.0):

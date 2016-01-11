@@ -151,27 +151,34 @@ class ColorVectorizer(object):
         return [self.unvectorize(b, random=random) for b in buckets]
 
 
-class LasagneModel(object):
+class SimpleLasagneModel(object):
     def __init__(self, input_vars, target_var, l_out, loss, optimizer):
         options = config.options()
 
         if not isinstance(input_vars, Sequence):
             input_vars = [input_vars]
 
-        prediction = get_output(l_out)
-        test_prediction = get_output(l_out, deterministic=True)
-        mean_loss = loss(prediction, target_var).mean()
         params = get_all_params(l_out, trainable=True)
-        updates = optimizer(mean_loss, params, learning_rate=0.001)
+        (train_loss,
+         train_loss_grads,
+         synth_vars) = self.get_train_loss(loss, l_out, target_var, params)
+        updates = optimizer(train_loss_grads, params, learning_rate=0.001)
         if options.detect_nans:
             mode = MonitorMode(post_func=detect_nan)
         else:
             mode = None
         print('Compiling training function')
-        self.train_fn = theano.function(input_vars + [target_var], mean_loss, updates=updates,
-                                        mode=mode)
+        self.train_fn = theano.function(input_vars + [target_var] + synth_vars,
+                                        train_loss, updates=updates, mode=mode)
+
+        test_prediction = get_output(l_out, deterministic=True)
         print('Compiling prediction function')
         self.predict_fn = theano.function(input_vars, test_prediction, mode=mode)
+
+    def get_train_loss(self, base_loss, l_out, target_var, params):
+        prediction = get_output(l_out)
+        mean_loss = base_loss(prediction, target_var).mean()
+        return mean_loss, T.grad(mean_loss, params), []
 
     def fit(self, Xs, y, batch_size, num_epochs):
         if not isinstance(Xs, Sequence):
@@ -188,7 +195,7 @@ class LasagneModel(object):
             for i, batch in enumerate(self.minibatches(Xs, y, batch_size, shuffle=True)):
                 progress.progress(i)
                 inputs, targets = batch
-                loss_epoch.append(self.train_fn(*inputs + [targets]))
+                loss_epoch.append(self.train_fn(*inputs + targets))
             progress.end_task()
 
             loss_history.append(loss_epoch)
@@ -214,7 +221,7 @@ class LasagneModel(object):
                 excerpt = indices[start_idx:start_idx + batch_size]
             else:
                 excerpt = slice(start_idx, start_idx + batch_size)
-            yield [X[excerpt] for X in inputs], targets[excerpt]
+            yield [X[excerpt] for X in inputs], [targets[excerpt]]
 
 
 class NeuralLearner(Learner):

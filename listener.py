@@ -9,7 +9,7 @@ from lasagne.nonlinearities import softmax
 from lasagne.updates import rmsprop
 
 from bt import config
-from neural import NeuralLearner, LasagneModel
+from neural import NeuralLearner, SimpleLasagneModel
 
 parser = config.get_options_parser()
 parser.add_argument('--listener_cell_size', type=int, default=20)
@@ -84,5 +84,5 @@ class ListenerLearner(NeuralLearner):
         l_scores = DenseLayer(l_hidden_drop, num_units=self.color_vec.num_types, nonlinearity=None)
         l_out = NonlinearityLayer(l_scores, nonlinearity=softmax)
 
-        self.model = LasagneModel(input_var, target_var, l_out,
-                                  loss=categorical_crossentropy, optimizer=rmsprop)
+        self.model = SimpleLasagneModel(input_var, target_var, l_out,
+                                        loss=categorical_crossentropy, optimizer=rmsprop)
