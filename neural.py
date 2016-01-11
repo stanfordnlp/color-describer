@@ -177,12 +177,23 @@ class LasagneModel(object):
         if not isinstance(Xs, Sequence):
             Xs = [Xs]
         loss_history = []
+
+        progress.start_task('Epoch', num_epochs)
         for epoch in range(num_epochs):
+            progress.progress(epoch)
             loss_epoch = []
+            num_minibatches_approx = len(y) // batch_size + 1
+
+            progress.start_task('Minibatch', num_minibatches_approx)
             for i, batch in enumerate(self.minibatches(Xs, y, batch_size, shuffle=True)):
+                progress.progress(i)
                 inputs, targets = batch
                 loss_epoch.append(self.train_fn(*inputs + [targets]))
+            progress.end_task()
+
             loss_history.append(loss_epoch)
+        progress.end_task()
+
         return np.array(loss_history)
 
     def predict(self, Xs):
@@ -227,7 +238,7 @@ class NeuralLearner(Learner):
         print('Training')
         losses = []
         progress.start_task('Iteration', options.train_iters)
-        for iteration in range(1, options.train_iters):
+        for iteration in range(options.train_iters):
             progress.progress(iteration)
             losses_iter = self.model.fit(xs, y, batch_size=128, num_epochs=options.train_epochs)
             losses.append(losses_iter.tolist())
