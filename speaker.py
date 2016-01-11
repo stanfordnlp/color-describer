@@ -95,8 +95,12 @@ class SpeakerLearner(NeuralLearner):
         N = np.zeros((len(next_tokens), self.seq_vec.max_len - 1), dtype=np.int32)
         c[:] = self.color_vec.vectorize_all(colors)
         for i, (color, prev, next) in enumerate(zip(colors, previous, next_tokens)):
-            P[i, :] = self.seq_vec.vectorize(prev)
-            N[i, :] = self.seq_vec.vectorize(next)
+            if len(prev) > P.shape[1]:
+                prev = prev[:P.shape[1]]
+            if len(next) > N.shape[1]:
+                next = next[:N.shape[1]]
+            P[i, :len(prev)] = self.seq_vec.vectorize(prev)
+            N[i, :len(next)] = self.seq_vec.vectorize(next)
             for t, token in enumerate(next):
                 mask[i, t] = (token != '<MASK>')
         c = np.tile(c[:, np.newaxis], [1, self.seq_vec.max_len - 1])
