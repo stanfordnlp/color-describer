@@ -32,11 +32,14 @@ def best_gpu(max_usage=USAGE_THRESHOLD, verbose=False):
   The least-used GPU with usage under the constant threshold will be chosen;
   ties are broken randomly.
   '''
-  proc = subprocess.Popen("nvidia-smi", stdout=subprocess.PIPE,
-                                        stderr=subprocess.PIPE)
-  output, error = proc.communicate()
-  if error:
-      warnings.warn('Failed to run nvidia-smi to find best GPU:\n' + error)
+  try:
+      proc = subprocess.Popen("nvidia-smi", stdout=subprocess.PIPE,
+                                            stderr=subprocess.PIPE)
+      output, error = proc.communicate()
+      if error:
+          raise Exception(error)
+  except Exception, e:
+      warnings.warn('Failed to run nvidia-smi to find best GPU:\n' + str(e))
       return "cpu"
 
   usages = parse_output(output)
@@ -136,9 +139,10 @@ def format_percent(p):
     return '%f%%' % p
 
 
-def bind_theano(max_usage=USAGE_THRESHOLD, verbose=True):
+def bind_theano(device=None, max_usage=USAGE_THRESHOLD, verbose=True):
   '''
-  Initialize Theano to use the device returned by calling `best_gpu`
+  Initialize Theano to use a certain device. If `device` is None (the
+  default), use the device returned by calling `best_gpu`
   with the same parameters.
 
   This needs to be called *before* importing Theano. Currently (Dec 2015)
@@ -146,7 +150,9 @@ def bind_theano(max_usage=USAGE_THRESHOLD, verbose=True):
   on import).
   '''
   import theano.sandbox.cuda
-  theano.sandbox.cuda.use(best_gpu(max_usage, verbose=verbose))
+  if device is None:
+    device = best_gpu(max_usage, verbose=verbose)
+  theano.sandbox.cuda.use(device)
 
 
 if __name__ == '__main__':

@@ -1,13 +1,23 @@
-from bt import pick_gpu
-pick_gpu.bind_theano()
+from bt import pick_gpu, config
 
-from bt import evaluate, metrics, output, progress, config
+parser = config.get_options_parser()
+parser.add_argument('--device', default=None,
+                    help='The device to use in Theano ("cpu" or "gpu[0-n]"). If None, '
+                         'pick a free-ish device automatically.')
+options, extras = parser.parse_known_args()
+if '-h' in extras or '--help' in extras:
+    # If user is just asking for the options, don't scare them
+    # by saying we're picking a GPU...
+    pick_gpu.bind_theano('cpu')
+else:
+    pick_gpu.bind_theano(options.device)
+
+
+from bt import evaluate, metrics, output, progress
 import datetime
 import learners
 import color_instances
 
-
-parser = config.get_options_parser()
 parser.add_argument('--learner', default='Histogram', choices=learners.LEARNERS.keys(),
                     help='The name of the model to use in the experiment.')
 parser.add_argument('--train_size', type=int, default=None,
