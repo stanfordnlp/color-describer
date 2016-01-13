@@ -13,7 +13,7 @@ parser.add_argument('--rsa_listeners', type=int, default=1,
 parser.add_argument('--rsa_speakers', type=int, default=1,
                     help='Number of speakers to use in RSA cooperative nets graph')
 parser.add_argument('--eval_agent', type=int, default=0,
-                    help='Index of the agent (listener/speaker) to use as the primary object'
+                    help='Index of the agent (listener/speaker) to use as the primary object '
                          'of evaluation. Whether this agent is a listener or speaker will be '
                          'inferred from the --listener flag.')
 
