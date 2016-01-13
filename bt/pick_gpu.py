@@ -39,7 +39,8 @@ def best_gpu(max_usage=USAGE_THRESHOLD, verbose=False):
       if error:
           raise Exception(error)
   except Exception, e:
-      warnings.warn('Failed to run nvidia-smi to find best GPU:\n' + str(e))
+      sys.stderr.write("Couldn't run nvidia-smi to find best GPU, using CPU: %s\n" % str(e))
+      sys.stderr.write("(This is normal if you have no GPU or haven't configured CUDA.)\n")
       return "cpu"
 
   usages = parse_output(output)
