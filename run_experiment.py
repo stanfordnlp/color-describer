@@ -38,29 +38,22 @@ def main():
     learner = learners.new(options.learner)
 
     progress.set_resolution(datetime.timedelta(seconds=options.progress_tick))
-    progress.start_task('Step', 4)
 
-    progress.progress(0)
     train_data = color_instances.get_training_instances(
         listener=options.listener
     )[:options.train_size]
 
-    progress.progress(1)
     learner.train(train_data)
 
-    progress.progress(2)
     m = ([metrics.log_likelihood, metrics.squared_error]
          if options.listener else
          [metrics.log_likelihood, metrics.accuracy])
     train_results = evaluate.evaluate(learner, train_data, metrics=m, split_id='train')
     output.output_results(train_results, 'train')
 
-    progress.progress(3)
     dev_data = color_instances.get_dev_instances(options.listener)[:options.test_size]
     dev_results = evaluate.evaluate(learner, dev_data, metrics=m, split_id='dev')
     output.output_results(dev_results, 'dev')
-
-    progress.end_task()
 
 
 if __name__ == '__main__':
