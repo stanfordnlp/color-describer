@@ -264,6 +264,9 @@ class NeuralLearner(Learner):
         progress.end_task()
         config.dump(losses, 'losses.jsons', lines=True)
 
+    def params(self):
+        return get_all_params(self.model.l_out)
+
     def log_prior_emp(self, input_vars):
         raise NotImplementedError
 
@@ -291,3 +294,16 @@ class NeuralLearner(Learner):
         return (self.log_prior_emp(input_vars) -
                 self.model.loss(get_output(self.model._get_l_out(input_vars)),
                                 target_var))
+
+    def __getstate__(self):
+        if not hasattr(self, 'model'):
+            raise RuntimeError("trying to pickle a model that hasn't been built yet")
+        params = self.params()
+        return self.seq_vec, self.color_vec, [p.get_value() for p in params]
+
+    def __setstate__(self, state):
+        self.seq_vec, self.color_vec, params_state = state
+        self._build_model()
+        params = self.params()
+        for p, value in zip(params, params_state):
+            p.set_value(value)

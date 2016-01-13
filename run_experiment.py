@@ -20,6 +20,10 @@ import color_instances
 
 parser.add_argument('--learner', default='Histogram', choices=learners.LEARNERS.keys(),
                     help='The name of the model to use in the experiment.')
+parser.add_argument('--load', metavar='MODEL_FILE', default=None,
+                    help='If provided, skip training and instead load a pretrained model '
+                         'from the specified path. If None or an empty string, train a '
+                         'new model.')
 parser.add_argument('--train_size', type=int, default=None,
                     help='The number of examples to use in training. '
                          'If None, use the whole training set.')
@@ -35,23 +39,31 @@ parser.add_argument('--progress_tick', type=int, default=300,
 
 def main():
     options = config.options()
-    learner = learners.new(options.learner)
 
     progress.set_resolution(datetime.timedelta(seconds=options.progress_tick))
 
     train_data = color_instances.get_training_instances(
         listener=options.listener
     )[:options.train_size]
+    dev_data = color_instances.get_dev_instances(options.listener)[:options.test_size]
 
-    learner.train(train_data)
+    learner = learners.new(options.learner)
 
     m = ([metrics.log_likelihood, metrics.squared_error]
          if options.listener else
          [metrics.log_likelihood, metrics.accuracy])
-    train_results = evaluate.evaluate(learner, train_data, metrics=m, split_id='train')
-    output.output_results(train_results, 'train')
 
-    dev_data = color_instances.get_dev_instances(options.listener)[:options.test_size]
+    if options.load:
+        with open(options.load, 'rb') as infile:
+            learner.load(infile)
+    else:
+        learner.train(train_data)
+        with open(config.get_file_path('model.p'), 'wb') as outfile:
+            learner.dump(outfile)
+
+        train_results = evaluate.evaluate(learner, train_data, metrics=m, split_id='train')
+        output.output_results(train_results, 'train')
+
     dev_results = evaluate.evaluate(learner, dev_data, metrics=m, split_id='dev')
     output.output_results(dev_results, 'dev')
 

@@ -77,6 +77,18 @@ class Histogram(object):
             for name in self.names
         ]
 
+    def __getstate__(self):
+        # `defaultdict`s aren't pickleable. Turn them into regular dicts for pickling.
+        state = dict(self.__dict__)
+        for name in ('buckets', 'bucket_counts'):
+            state[name] = dict(state[name])
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.buckets = defaultdict(Counter, self.buckets)
+        self.bucket_counts = defaultdict(int, self.bucket_counts)
+
 
 class HistogramLearner(Learner):
     '''
@@ -130,6 +142,15 @@ class HistogramLearner(Learner):
             score.append(-np.log(prob))
         progress.end_task()
         return predict, score
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state['name_to_index'] = dict(state['name_to_index'])
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.name_to_index = defaultdict(lambda: -1, self.name_to_index)
 
 
 class MostCommonSpeakerLearner(Learner):
