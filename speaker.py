@@ -67,6 +67,16 @@ class SpeakerLearner(NeuralLearner):
         scores = scores_arr.tolist()
         return scores
 
+    def log_prior_emp(self, input_vars):
+        raise NotImplementedError
+
+    def log_prior_smooth(self, input_vars):
+        # TODO
+        return self.log_prior_emp(input_vars)
+
+    def sample(self, inputs):
+        raise NotImplementedError
+
     def _data_to_arrays(self, training_instances, test=False):
         if not test:
             self.seq_vec.add_all(['<s>'] + inst.output.split() + ['</s>']
@@ -82,11 +92,11 @@ class SpeakerLearner(NeuralLearner):
             full = ['<s>'] + desc + ['</s>'] + ['<MASK>'] * (self.seq_vec.max_len - 2 - len(desc))
             prev = full[:-1]
             next = full[1:]
-            print('%s, %s -> %s' % (repr(color), repr(prev), repr(next)))
+            # print('%s, %s -> %s' % (repr(color), repr(prev), repr(next)))
             colors.append(color)
             previous.append(prev)
             next_tokens.append(next)
-        print('number of sequences: %d' % len(colors))
+        print('Number of sequences: %d' % len(colors))
 
         print('Vectorization...')
         c = np.zeros((len(colors),), dtype=np.int32)
@@ -107,13 +117,20 @@ class SpeakerLearner(NeuralLearner):
 
         return (c, P, mask), N
 
-    def _build_model(self):
+    def _build_model(self, model_class=SimpleLasagneModel):
+        input_vars = [T.imatrix('inputs'),
+                      T.imatrix('previous'),
+                      T.imatrix('mask')]
+        target_var = T.imatrix('targets')
+
+        l_out = self._get_l_out(input_vars)
+        self.model = model_class(input_vars, target_var, l_out,
+                                 loss=crossentropy_categorical_1hot_nd, optimizer=rmsprop)
+
+    def _get_l_out(self, input_vars):
         options = config.options()
 
-        input_var = T.imatrix('inputs')
-        prev_output_var = T.imatrix('previous')
-        mask_var = T.imatrix('mask')
-        target_var = T.imatrix('targets')
+        input_var, prev_output_var, mask_var = input_vars
 
         l_color = InputLayer(shape=(None, self.seq_vec.max_len - 1), input_var=input_var)
         l_color_embed = EmbeddingLayer(l_color, input_size=self.color_vec.num_types,
@@ -132,10 +149,7 @@ class SpeakerLearner(NeuralLearner):
                             forgetgate=Gate(b=Constant(options.speaker_forget_bias)))
         l_shape = ReshapeLayer(l_lstm2, (-1, len(self.seq_vec.tokens)))
         l_softmax = NonlinearityLayer(l_shape, nonlinearity=softmax)
-        l_out = ReshapeLayer(l_softmax, (-1, self.seq_vec.max_len - 1, len(self.seq_vec.tokens)))
-
-        self.model = SimpleLasagneModel([input_var, prev_output_var, mask_var], target_var, l_out,
-                                        loss=crossentropy_categorical_1hot_nd, optimizer=rmsprop)
+        return ReshapeLayer(l_softmax, (-1, self.seq_vec.max_len - 1, len(self.seq_vec.tokens)))
 
 
 def sample(a, temperature=1.0):

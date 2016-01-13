@@ -5,6 +5,7 @@ from bt.learner import Learner
 from bt import progress
 from listener import ListenerLearner
 from speaker import SpeakerLearner
+from rsa import RSALearner
 
 
 def new(key):
@@ -176,6 +177,7 @@ LEARNERS = {
     'Histogram': HistogramLearner,
     'Listener': ListenerLearner,
     'Speaker': SpeakerLearner,
+    'RSA': RSALearner,
     'MostCommon': MostCommonSpeakerLearner,
     'Random': RandomListenerLearner,
 }

@@ -33,5 +33,16 @@ class Instance(object):
                         annotated_input=self.annotated_input if include_annotated else None,
                         alt_inputs=self.alt_inputs, alt_outputs=self.alt_outputs)
 
+    def inverted(self):
+        '''
+        Return a version of this instance with inputs replaced by outputs and vice versa.
+        '''
+        return Instance(input=self.output, output=self.input,
+                        annotated_input=self.annotated_output,
+                        annotated_output=self.annotated_input,
+                        alt_inputs=self.alt_outputs,
+                        alt_outputs=self.alt_inputs,
+                        source=self.source)
+
     def __repr__(self):
         return 'Instance(%s, %s)' % (repr(self.input), repr(self.output))

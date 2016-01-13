@@ -9,6 +9,7 @@ from theano.compile import MonitorMode
 
 from bt import config, progress
 from bt.learner import Learner
+from bt.instance import Instance
 from bt.rng import get_rng
 
 parser = config.get_options_parser()
@@ -152,50 +153,58 @@ class ColorVectorizer(object):
 
 
 class SimpleLasagneModel(object):
-    def __init__(self, input_vars, target_var, l_out, loss, optimizer):
+    def __init__(self, input_vars, target_vars, l_out, loss, optimizer):
         options = config.options()
 
         if not isinstance(input_vars, Sequence):
             input_vars = [input_vars]
+        if not isinstance(target_vars, Sequence):
+            target_vars = [target_vars]
+
+        self.l_out = l_out
+        self.loss = loss
 
         params = get_all_params(l_out, trainable=True)
         (train_loss,
          train_loss_grads,
-         synth_vars) = self.get_train_loss(loss, l_out, target_var, params)
+         synth_vars) = self.get_train_loss(target_vars, params)
         updates = optimizer(train_loss_grads, params, learning_rate=0.001)
         if options.detect_nans:
             mode = MonitorMode(post_func=detect_nan)
         else:
             mode = None
         print('Compiling training function')
-        self.train_fn = theano.function(input_vars + [target_var] + synth_vars,
+        self.train_fn = theano.function(input_vars + target_vars + synth_vars,
                                         train_loss, updates=updates, mode=mode)
 
         test_prediction = get_output(l_out, deterministic=True)
         print('Compiling prediction function')
         self.predict_fn = theano.function(input_vars, test_prediction, mode=mode)
 
-    def get_train_loss(self, base_loss, l_out, target_var, params):
-        prediction = get_output(l_out)
-        mean_loss = base_loss(prediction, target_var).mean()
+    def get_train_loss(self, target_vars, params):
+        assert len(target_vars) == 1
+        prediction = get_output(self.l_out)
+        mean_loss = self.loss(prediction, target_vars[0]).mean()
         return mean_loss, T.grad(mean_loss, params), []
 
-    def fit(self, Xs, y, batch_size, num_epochs):
+    def fit(self, Xs, ys, batch_size, num_epochs):
         if not isinstance(Xs, Sequence):
             Xs = [Xs]
+        if not isinstance(ys, Sequence):
+            ys = [ys]
         loss_history = []
 
         progress.start_task('Epoch', num_epochs)
         for epoch in range(num_epochs):
             progress.progress(epoch)
             loss_epoch = []
-            num_minibatches_approx = len(y) // batch_size + 1
+            num_minibatches_approx = len(ys[0]) // batch_size + 1
 
             progress.start_task('Minibatch', num_minibatches_approx)
-            for i, batch in enumerate(self.minibatches(Xs, y, batch_size, shuffle=True)):
+            for i, batch in enumerate(self.minibatches(Xs, ys, batch_size, shuffle=True)):
                 progress.progress(i)
-                inputs, targets = batch
-                loss_epoch.append(self.train_fn(*inputs + targets))
+                inputs, targets, synth = batch
+                loss_epoch.append(self.train_fn(*inputs + targets + synth))
             progress.end_task()
 
             loss_history.append(loss_epoch)
@@ -211,17 +220,19 @@ class SimpleLasagneModel(object):
     def minibatches(self, inputs, targets, batch_size, shuffle=False):
         '''Lifted mostly verbatim from iterate_minibatches in
         https://github.com/Lasagne/Lasagne/blob/master/examples/mnist.py'''
-        assert all(len(X) == len(targets) for X in inputs)
+        num_examples = len(targets[0])
+        assert all(len(X) == num_examples for X in inputs)
+        assert all(len(y) == num_examples for y in targets)
         if shuffle:
-            indices = np.arange(len(targets))
+            indices = np.arange(num_examples)
             rng.shuffle(indices)
-        last_batch = max(0, len(targets) - batch_size)
+        last_batch = max(0, num_examples - batch_size)
         for start_idx in range(0, last_batch + 1, batch_size):
             if shuffle:
                 excerpt = indices[start_idx:start_idx + batch_size]
             else:
                 excerpt = slice(start_idx, start_idx + batch_size)
-            yield [X[excerpt] for X in inputs], [targets[excerpt]]
+            yield [X[excerpt] for X in inputs], [y[excerpt] for y in targets], []
 
 
 class NeuralLearner(Learner):
@@ -239,7 +250,8 @@ class NeuralLearner(Learner):
     def train(self, training_instances):
         options = config.options()
 
-        xs, y = self._data_to_arrays(training_instances)
+        self.dataset = training_instances
+        xs, ys = self._data_to_arrays(training_instances)
         self._build_model()
 
         print('Training')
@@ -247,7 +259,35 @@ class NeuralLearner(Learner):
         progress.start_task('Iteration', options.train_iters)
         for iteration in range(options.train_iters):
             progress.progress(iteration)
-            losses_iter = self.model.fit(xs, y, batch_size=128, num_epochs=options.train_epochs)
+            losses_iter = self.model.fit(xs, ys, batch_size=128, num_epochs=options.train_epochs)
             losses.append(losses_iter.tolist())
         progress.end_task()
         config.dump(losses, 'losses.jsons', lines=True)
+
+    def log_prior_emp(self, input_vars):
+        raise NotImplementedError
+
+    def log_prior_smooth(self, input_vars):
+        raise NotImplementedError
+
+    def sample(self, inputs):
+        raise NotImplementedError
+
+    def sample_prior_emp(self, num_samples):
+        indices = rng.randint(len(self.dataset), size=num_samples)
+        return [self.dataset[i].stripped() for i in indices]
+
+    def sample_joint_emp(self, num_samples=1):
+        inputs = self.sample_prior_emp(num_samples)
+        outputs = self.sample(inputs)
+        return [Instance(input=inp, output=out) for inp, out in zip(inputs, outputs)]
+
+    def log_joint_smooth(self, input_vars, target_var):
+        return (self.log_prior_smooth(input_vars) -
+                self.model.loss(get_output(self.model._get_l_out(input_vars)),
+                                target_var))
+
+    def log_joint_emp(self, input_vars, target_var):
+        return (self.log_prior_emp(input_vars) -
+                self.model.loss(get_output(self.model._get_l_out(input_vars)),
+                                target_var))

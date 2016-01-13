@@ -49,10 +49,10 @@ class ListenerLearner(NeuralLearner):
             color = tuple(min(d * 256, 255) for d in color_0_1)
             s = ['<s>'] * (self.seq_vec.max_len - 1 - len(desc)) + desc
             s.append('</s>')
-            print('%s -> %s' % (repr(s), repr(color)))
+            # print('%s -> %s' % (repr(s), repr(color)))
             sentences.append(s)
             colors.append(color)
-        print('Num sequences: %d' % len(sentences))
+        print('Number of sequences: %d' % len(sentences))
 
         print('Vectorization')
         x = np.zeros((len(sentences), self.seq_vec.max_len), dtype=np.int32)
@@ -63,11 +63,29 @@ class ListenerLearner(NeuralLearner):
 
         return x, y
 
-    def _build_model(self):
-        options = config.options()
+    def log_prior_emp(self, input_vars):
+        raise NotImplementedError
 
+    def log_prior_smooth(self, input_vars):
+        # TODO
+        return self.log_prior_emp(input_vars)
+
+    def sample(self, inputs):
+        raise NotImplementedError
+
+    def _build_model(self, model_class=SimpleLasagneModel):
         input_var = T.imatrix('inputs')
         target_var = T.ivector('targets')
+
+        l_out = self._get_l_out([input_var])
+
+        self.model = model_class(input_var, target_var, l_out,
+                                 loss=categorical_crossentropy, optimizer=rmsprop)
+
+    def _get_l_out(self, input_vars):
+        options = config.options()
+
+        input_var = input_vars[0]
 
         l_in = InputLayer(shape=(None, self.seq_vec.max_len), input_var=input_var)
         l_in_embed = EmbeddingLayer(l_in, input_size=len(self.seq_vec.tokens),
@@ -82,7 +100,4 @@ class ListenerLearner(NeuralLearner):
         l_hidden = DenseLayer(l_lstm2_drop, num_units=options.listener_cell_size, nonlinearity=None)
         l_hidden_drop = DropoutLayer(l_hidden, p=0.2)
         l_scores = DenseLayer(l_hidden_drop, num_units=self.color_vec.num_types, nonlinearity=None)
-        l_out = NonlinearityLayer(l_scores, nonlinearity=softmax)
-
-        self.model = SimpleLasagneModel(input_var, target_var, l_out,
-                                        loss=categorical_crossentropy, optimizer=rmsprop)
+        return NonlinearityLayer(l_scores, nonlinearity=softmax)
