@@ -7,7 +7,7 @@ from collections import Sequence
 from lasagne.layers import get_output, get_all_params
 from theano.compile import MonitorMode
 
-from bt import config, progress
+from bt import config, progress, summary
 from bt.learner import Learner
 from bt.instance import Instance
 from bt.rng import get_rng
@@ -255,14 +255,15 @@ class NeuralLearner(Learner):
         self._build_model()
 
         print('Training')
-        losses = []
+        loss_writer = summary.SummaryWriter(config.get_file_path('losses.tfevents'))
         progress.start_task('Iteration', options.train_iters)
         for iteration in range(options.train_iters):
             progress.progress(iteration)
             losses_iter = self.model.fit(xs, ys, batch_size=128, num_epochs=options.train_epochs)
-            losses.append(losses_iter.tolist())
+            for e, loss in enumerate(np.mean(losses_iter, axis=1).tolist()):
+                loss_writer.log_scalar(iteration * options.train_epochs + e,
+                                       'loss_epoch', loss)
         progress.end_task()
-        config.dump(losses, 'losses.jsons', lines=True)
 
     def params(self):
         return get_all_params(self.model.l_out)

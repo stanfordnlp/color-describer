@@ -27,3 +27,6 @@ runs/
 
 # virtualenv shortcut script
 activate
+
+# minimal subset for Tensorboard logging
+/tensorflow
