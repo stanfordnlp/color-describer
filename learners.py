@@ -23,8 +23,8 @@ class Histogram(object):
     ...         I((0.0, 100.0, 45.0), 'dark red'),
     ...         I((240.0, 100.0, 49.0), 'blue')]
     >>> h = Histogram(data, names=['red', 'dark red', 'blue'],
-    ...               granularity=(90, 10, 10))
-    >>> h.get_probs((1.0, 101.0, 48.0))
+    ...               granularity=(4, 10, 10))
+    >>> h.get_probs((1.0, 91.0, 48.0))
     [0.5, 0.5, 0.0]
     >>> h.get_probs((240.0, 100.0, 40.0))
     [0.0, 0.0, 1.0]
@@ -35,6 +35,9 @@ class Histogram(object):
         self.buckets = defaultdict(Counter)
         self.bucket_counts = defaultdict(int)
         self.granularity = granularity
+        self.bucket_sizes = (360 // granularity[0],
+                             100 // granularity[1],
+                             100 // granularity[2])
         self.use_progress = use_progress
 
         self.add_data(training_instances)
@@ -56,26 +59,29 @@ class Histogram(object):
 
     def get_bucket(self, color):
         '''
-        >>> Histogram([], [], granularity=(3, 5, 7)).get_bucket((0, 1, 2))
+        >>> Histogram([], [], granularity=(3, 5, 10)).get_bucket((0, 1, 2))
         (0, 0, 0)
-        >>> Histogram([], [], granularity=(3, 5, 7)).get_bucket((5.5, 27.3, 7.0))
-        (3, 25, 7)
+        >>> Histogram([], [], granularity=(3, 5, 10)).get_bucket((172.0, 30.0, 75.0))
+        (120, 20, 70)
+        >>> Histogram([], [], granularity=(3, 5, 10)).get_bucket((360.0, 100.0, 100.0))
+        (240, 80, 90)
         '''
         return tuple(
-            g * int(d // g)
-            for d, g in zip(color, self.granularity)
+            s * min(int(d // s), g - 1)
+            for d, s, g in zip(color, self.bucket_sizes, self.granularity)
         )
 
     def get_probs(self, color):
         bucket = self.get_bucket(color)
         counter = self.buckets[bucket]
         bucket_size = self.bucket_counts[bucket]
-        return [
-            (counter[name] * 1.0 / bucket_size
-             if bucket_size != 0
-             else 1.0 / len(self.names))
-            for name in self.names
-        ]
+        probs = []
+        for name in self.names:
+            prob = ((counter[name] * 1.0 / bucket_size)
+                    if bucket_size != 0
+                    else (1.0 / len(self.names)))
+            probs.append(prob)
+        return probs
 
     def __getstate__(self):
         # `defaultdict`s aren't pickleable. Turn them into regular dicts for pickling.
@@ -130,18 +136,18 @@ class HistogramLearner(Learner):
         return self.predict_and_score(eval_instances)[1]
 
     def predict_and_score(self, eval_instances):
-        predict = []
-        score = []
+        predictions = []
+        scores = []
         progress.start_task('Example', len(eval_instances))
         for i, inst in enumerate(eval_instances):
             progress.progress(i)
             hist_probs = self.hist_probs(inst.input)
             name = self.names[hist_probs.argmax()]
             prob = hist_probs[self.name_to_index[inst.output]]
-            predict.append(name)
-            score.append(-np.log(prob))
+            predictions.append(name)
+            scores.append(-np.log(prob))
         progress.end_task()
-        return predict, score
+        return predictions, scores
 
     def __getstate__(self):
         state = dict(self.__dict__)
