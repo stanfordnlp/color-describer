@@ -79,7 +79,7 @@ class ListenerLearner(NeuralLearner):
 
         l_out = self._get_l_out([input_var])
 
-        self.model = model_class(input_var, target_var, l_out,
+        self.model = model_class([input_var], [target_var], l_out,
                                  loss=categorical_crossentropy, optimizer=rmsprop)
 
     def _get_l_out(self, input_vars):

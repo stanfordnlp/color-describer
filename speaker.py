@@ -124,7 +124,7 @@ class SpeakerLearner(NeuralLearner):
         target_var = T.imatrix('targets')
 
         l_out = self._get_l_out(input_vars)
-        self.model = model_class(input_vars, target_var, l_out,
+        self.model = model_class(input_vars, [target_var], l_out,
                                  loss=crossentropy_categorical_1hot_nd, optimizer=rmsprop)
 
     def _get_l_out(self, input_vars):

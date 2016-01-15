@@ -1,5 +1,6 @@
 import theano.tensor as T
 import operator
+from collections import Sequence
 from lasagne.layers import get_output
 
 from bt import config
@@ -25,12 +26,12 @@ parser.add_argument('--rsa_beta', type=float, nargs='*', default=[1.0],
                          'speakers. Provide as many values as there are speakers.')
 parser.add_argument('--rsa_mu', type=float, nargs='*', default=[1.0],
                     help='Weights for KL(L_j||S_k). Provide values to fill a '
-                         'num_listeners x num_speakers matrix, in row-major order '
+                         'rsa_listeners x rsa_speakers matrix, in row-major order '
                          '(i.e. all speakers for first listener, then all speakers for second '
                          'listener, etc.).')
 parser.add_argument('--rsa_nu', type=float, nargs='*', default=[1.0],
                     help='Weights for KL(S_k||L_j). Provide values to fill a '
-                         'num_listeners x num_speakers matrix, in row-major order '
+                         'rsa_listeners x rsa_speakers matrix, in row-major order '
                          '(i.e. all speakers for first listener, then all speakers for second '
                          'listener, etc.).')
 
@@ -44,11 +45,16 @@ class RSASubModel(object):
     '''
     A stand-in for the SimpleLasagneModel for the subcomponents of an RSA graph.
     '''
-    def __init__(self, input_vars, target_var, l_out, loss, optimizer):
+    def __init__(self, input_vars, target_vars, l_out, loss, optimizer):
         self.input_vars = input_vars
-        self.target_var = target_var
+        if not isinstance(input_vars, Sequence):
+            raise ValueError('input_vars should be a sequence, instead got %s' % (input_vars,))
+        if not isinstance(target_vars, Sequence) or len(target_vars) != 1:
+            raise ValueError('target_vars should be a sequence of length 1, instead got %s' %
+                             (target_vars,))
+        self.target_var = target_vars[0]
         self.l_out = l_out
-        self.base_loss = loss
+        self.loss = loss
         self.optimizer = optimizer
 
     def build_sample_vars(self, num_other_agents):
@@ -82,14 +88,14 @@ class RSAGraphModel(SimpleLasagneModel):
     def __init__(self, listeners, speakers):
         self.listeners = listeners
         self.speakers = speakers
-        input_vars = ([v for listener in listeners for v in listener.input_vars] +
-                      [v for speaker in speakers for v in speaker.input_vars])
-        target_vars = ([listener.target_var for listener in listeners] +
-                       [speaker.target_var for speaker in speakers])
+        input_vars = ([v for listener in listeners for v in listener.model.input_vars] +
+                      [v for speaker in speakers for v in speaker.model.input_vars])
+        target_vars = ([listener.model.target_var for listener in listeners] +
+                       [speaker.model.target_var for speaker in speakers])
         super(RSAGraphModel, self).__init__(input_vars, target_vars,
                                             l_out=None, loss=None, optimizer=None)
 
-    def get_train_loss(self, loss, l_out, target_var, params):
+    def get_train_loss(self, target_vars, params):
         for agent in self.speakers:
             agent.model.build_sample_vars(len(self.listeners))
         for agent in self.listeners:
@@ -108,21 +114,23 @@ class RSAGraphModel(SimpleLasagneModel):
 
         def loss_out(agent, out, target_var):
             pred = get_output(out)
-            return agent.loss(pred, target_var)
+            return agent.model.loss(pred, target_var)
 
         def kl(agent_p, agent_q, other_idx):
-            return est_mean(agent_p.log_joint_emp(agent_p.sample_inputs_self,
-                                                  agent_p.sample_target_self) -
-                            agent_q.log_joint_smooth(agent_q.sample_inputs_others[other_idx],
-                                                     agent_q.sample_target_others[other_idx]))
+            return est_mean(agent_p.log_joint_emp(agent_p.model.sample_inputs_self,
+                                                  agent_p.model.sample_target_self) -
+                            agent_q.log_joint_smooth(agent_q.model.sample_inputs_others[other_idx],
+                                                     agent_q.model.sample_target_others[other_idx]))
 
         # \alpha * KL(dataset || L) = \alpha * log L(dataset) + C
         est_loss = t_sum(alpha *
-                         est_mean(loss_out(listener, listener.l_out, listener.model.target_var))
+                         est_mean(loss_out(listener, listener.model.l_out,
+                                           listener.model.target_var))
                          for alpha, listener in zip(options.rsa_alpha, self.listeners))
         # \beta * KL(dataset || S) = \beta * log S(dataset) + C
         est_loss += t_sum(beta *
-                          est_mean(loss_out(speaker, speaker.l_out, speaker.model.target_var))
+                          est_mean(loss_out(speaker, speaker.model.l_out,
+                                            speaker.model.target_var))
                           for beta, speaker in zip(options.rsa_beta, self.speakers))
 
         # \mu * KL(L || S)
@@ -141,17 +149,19 @@ class RSAGraphModel(SimpleLasagneModel):
 
         def loss_grad(agent, out, target_var):
             pred = get_output(out)
-            loss = agent.loss(pred, target_var)
+            loss = agent.model.loss(pred, target_var)
             return T.grad(loss, params)
 
         # alpha and beta: train the agents directly against the dataset.
         #   \alpha_j E_D [-d/d\theta_j log L(c | m; \theta_j)]
         est_grad = t_sum(alpha *
-                         est_mean(loss_grad(listener, listener.l_out, listener.model.target_var))
+                         est_mean(loss_grad(listener, listener.model.l_out,
+                                            listener.model.target_var))
                          for alpha, listener in zip(options.rsa_alpha, self.listeners))
         #   \beta_k E_D [-d/d\phi_k log S(m | c; \phi_k)]
         est_grad += t_sum(beta *
-                          est_mean(loss_grad(speaker, speaker.l_out, speaker.model.target_var))
+                          est_mean(loss_grad(speaker, speaker.model.l_out,
+                                             speaker.model.target_var))
                           for beta, speaker in zip(options.rsa_beta, self.speakers))
 
         # The "simple" mu and nu terms: train the agents directly against each other.
@@ -235,8 +245,8 @@ class RSALearner(NeuralLearner):
     def __init__(self):
         options = config.options()
 
-        self.listeners = [ListenerLearner() for _ in range(options.num_listeners)]
-        self.speakers = [SpeakerLearner() for _ in range(options.num_speakers)]
+        self.listeners = [ListenerLearner() for _ in range(options.rsa_listeners)]
+        self.speakers = [SpeakerLearner() for _ in range(options.rsa_speakers)]
 
         agents = self.listeners if options.listener else self.speakers
         self.eval_agent = agents[options.eval_agent]
@@ -252,11 +262,13 @@ class RSALearner(NeuralLearner):
             speaker_dataset = training_instances
 
         for listener in self.listeners:
-            listener._build_model(RSASubModel)
+            listener._data_to_arrays(listener_dataset)
             listener.dataset = listener_dataset
+            listener._build_model(RSASubModel)
         for speaker in self.speakers:
-            speaker._build_model(RSASubModel)
+            speaker._data_to_arrays(speaker_dataset)
             speaker.dataset = speaker_dataset
+            speaker._build_model(RSASubModel)
 
         return super(RSALearner, self).train(training_instances)
 
@@ -274,7 +286,7 @@ class RSALearner(NeuralLearner):
         target_arrays = []
 
         for agent in self.listeners + self.speakers:
-            inputs, target = agent._data_to_arrays(training_instances)
+            inputs, target = agent._data_to_arrays(agent.dataset)
             input_arrays.extend(inputs)
             target_arrays.append(target)
 

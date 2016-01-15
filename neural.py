@@ -157,9 +157,9 @@ class SimpleLasagneModel(object):
         options = config.options()
 
         if not isinstance(input_vars, Sequence):
-            input_vars = [input_vars]
+            raise ValueError('input_vars should be a sequence, instead got %s' % (input_vars,))
         if not isinstance(target_vars, Sequence):
-            target_vars = [target_vars]
+            raise ValueError('target_vars should be a sequence, instead got %s' % (input_vars,))
 
         self.l_out = l_out
         self.loss = loss
@@ -189,9 +189,9 @@ class SimpleLasagneModel(object):
 
     def fit(self, Xs, ys, batch_size, num_epochs):
         if not isinstance(Xs, Sequence):
-            Xs = [Xs]
+            raise ValueError('Xs should be a sequence, instead got %s' % (Xs,))
         if not isinstance(ys, Sequence):
-            ys = [ys]
+            raise ValueError('ys should be a sequence, instead got %s' % (ys,))
         loss_history = []
 
         progress.start_task('Epoch', num_epochs)
@@ -214,7 +214,7 @@ class SimpleLasagneModel(object):
 
     def predict(self, Xs):
         if not isinstance(Xs, Sequence):
-            Xs = [Xs]
+            raise ValueError('Xs should be a sequence, instead got %s' % (Xs,))
         return self.predict_fn(*Xs)
 
     def minibatches(self, inputs, targets, batch_size, shuffle=False):
