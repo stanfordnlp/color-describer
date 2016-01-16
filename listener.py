@@ -1,6 +1,7 @@
 import colorsys
 import numpy as np
 import theano.tensor as T
+from collections import Counter
 from lasagne.layers import InputLayer, DropoutLayer, DenseLayer, EmbeddingLayer, NonlinearityLayer
 from lasagne.layers.recurrent import LSTMLayer, Gate
 from lasagne.init import Constant
@@ -8,7 +9,7 @@ from lasagne.objectives import categorical_crossentropy
 from lasagne.nonlinearities import softmax
 from lasagne.updates import rmsprop
 
-from bt import config
+from bt import config, instance
 from neural import NeuralLearner, SimpleLasagneModel
 
 parser = config.get_options_parser()
@@ -23,6 +24,7 @@ class ListenerLearner(NeuralLearner):
     '''
     def __init__(self):
         options = config.options()
+        self.word_counts = Counter()
         super(ListenerLearner, self).__init__(options.listener_color_resolution)
 
     def predict_and_score(self, eval_instances):
@@ -36,6 +38,17 @@ class ListenerLearner(NeuralLearner):
         scores = scores_arr.tolist()
         return predict, scores
 
+    def on_iter_end(self, step, writer):
+        most_common = [desc for desc, count in self.word_counts.most_common(10)]
+        insts = [instance.Instance(input=desc) for desc in most_common]
+        xs, y = self._data_to_arrays(insts, test=True)
+        probs = self.model.predict(xs)
+        for i, desc in enumerate(most_common):
+            dist = probs[i, :]
+            for image, channel in zip(self.color_vec.visualize_distribution(dist), '012'):
+                writer.log_image(step, 'listener/%s/%s' % (desc, channel), image)
+        super(ListenerLearner, self).on_iter_end(step, writer)
+
     def _data_to_arrays(self, training_instances, test=False):
         if not test:
             self.seq_vec.add_all(['<s>'] + inst.input.split() + ['</s>']
@@ -44,7 +57,13 @@ class ListenerLearner(NeuralLearner):
         sentences = []
         colors = []
         for i, inst in enumerate(training_instances):
-            desc, (hue, sat, val) = inst.input.split(), inst.output
+            self.word_counts.update([inst.input])
+            desc = inst.input.split()
+            if inst.output:
+                (hue, sat, val) = inst.output
+            else:
+                assert test
+                hue = sat = val = 0.0
             color_0_1 = colorsys.hsv_to_rgb(hue / 360.0, sat / 100.0, val / 100.0)
             color = tuple(min(d * 256, 255) for d in color_0_1)
             s = ['<s>'] * (self.seq_vec.max_len - 1 - len(desc)) + desc
@@ -61,7 +80,7 @@ class ListenerLearner(NeuralLearner):
             x[i, :] = self.seq_vec.vectorize(sentence)
             y[i] = self.color_vec.vectorize(colors[i])
 
-        return x, y
+        return [x], [y]
 
     def log_prior_emp(self, input_vars):
         raise NotImplementedError

@@ -14,7 +14,7 @@ if [ ! -e rugstk ]; then
 fi
 
 echo 'Installing Python module dependencies...'
-pip install ConfigArgParse pyhocon 'Protobuf>=3.0.0b2'
+pip install ConfigArgParse pyhocon pypng 'Protobuf>=3.0.0b2'
 
 if [ ! -e tensorflow ]; then
     echo 'Checking for tensorboard protos...'

@@ -151,6 +151,45 @@ class ColorVectorizer(object):
         '''
         return [self.unvectorize(b, random=random) for b in buckets]
 
+    def visualize_distribution(self, dist):
+        '''
+        :param dist: A distribution over the buckets defined by this vectorizer
+        :type dist: array-like with shape `(self.num_types,)``
+        :return images: `list(`3-D `np.array` with `shape[2] == 3)`, three images
+            with the last dimension being the channels (RGB) of cross-sections
+            along each axis, showing the strength of the distribution as the
+            intensity of the channel perpendicular to the cross-section.
+
+        >>> ColorVectorizer((2, 2, 2)).visualize_distribution([0, 0.25, 0, 0.5,
+        ...                                                    0, 0, 0, 0.25])
+        ... # doctest: +NORMALIZE_WHITESPACE
+        [array([[[  0,  64,  64], [ 63,  64, 192]],
+                [[  0, 192,  64], [191, 192, 192]]]),
+         array([[[ 64,   0,  64], [ 64, 191, 192]],
+                [[192,   0,  64], [192,  63, 192]]]),
+         array([[[ 64,  64,  63], [ 64, 192, 127]],
+                [[192,  64,   0], [192, 192,  63]]])]
+        '''
+        dist_3d = np.asarray(dist).reshape(self.resolution)
+        # Compute background: RGB for each bucket along each face with one channel set to 0
+        r, g, b = self.bucket_sizes
+        images = [
+            np.array(
+                np.meshgrid(0, np.arange(g // 2, 256, g), np.arange(b // 2, 256, b))
+            ).squeeze(2).transpose((1, 2, 0)),
+            np.array(
+                np.meshgrid(np.arange(r // 2, 256, r), 0, np.arange(b // 2, 256, b))
+            ).squeeze(1).transpose((1, 2, 0)),
+            np.array(
+                np.meshgrid(np.arange(r // 2, 256, r), np.arange(g // 2, 256, g), 0)
+            ).squeeze(3).transpose((2, 1, 0)),
+        ]
+        for axis in range(3):
+            xsection = dist_3d.sum(axis=axis)
+            xsection /= xsection.max()
+            images[axis][:, :, axis] = (xsection * 255.99).astype(np.int)
+        return images
+
 
 class SimpleLasagneModel(object):
     def __init__(self, input_vars, target_vars, l_out, loss, optimizer):
@@ -255,15 +294,19 @@ class NeuralLearner(Learner):
         self._build_model()
 
         print('Training')
-        loss_writer = summary.SummaryWriter(config.get_file_path('losses.tfevents'))
+        writer = summary.SummaryWriter(config.get_file_path('losses.tfevents'))
         progress.start_task('Iteration', options.train_iters)
         for iteration in range(options.train_iters):
             progress.progress(iteration)
             losses_iter = self.model.fit(xs, ys, batch_size=128, num_epochs=options.train_epochs)
             for e, loss in enumerate(np.mean(losses_iter, axis=1).tolist()):
-                loss_writer.log_scalar(iteration * options.train_epochs + e,
-                                       'loss_epoch', loss)
+                writer.log_scalar(iteration * options.train_epochs + e,
+                                  'loss_epoch', loss)
+            self.on_iter_end((iteration + 1) * options.train_epochs, writer)
         progress.end_task()
+
+    def on_iter_end(self, step, writer):
+        pass
 
     def params(self):
         return get_all_params(self.model.l_out)
