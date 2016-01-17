@@ -56,14 +56,17 @@ class SpeakerLearner(NeuralLearner):
         return [strip_invalid_tokens(o) for o in outputs]
 
     def score(self, eval_instances):
-        xs, y = self._data_to_arrays(eval_instances, test=True)
+        xs, (y,) = self._data_to_arrays(eval_instances, test=True)
         _, _, mask = xs
 
         print('Testing')
         probs = self.model.predict(xs)
+        print('probs.shape: %s' % (probs.shape,))
         token_probs = probs[np.arange(probs.shape[0])[:, np.newaxis],
                             np.arange(probs.shape[1]), y]
+        assert (token_probs.shape == (len(eval_instances), probs.shape[1])), token_probs.shape
         scores_arr = np.sum(-np.log(token_probs) * mask, axis=1)
+        assert (scores_arr.shape == (len(eval_instances),)), scores_arr.shape[1]
         scores = scores_arr.tolist()
         return scores
 
@@ -115,7 +118,7 @@ class SpeakerLearner(NeuralLearner):
                 mask[i, t] = (token != '<MASK>')
         c = np.tile(c[:, np.newaxis], [1, self.seq_vec.max_len - 1])
 
-        return (c, P, mask), N
+        return [c, P, mask], [N]
 
     def _build_model(self, model_class=SimpleLasagneModel):
         input_vars = [T.imatrix('inputs'),
