@@ -296,16 +296,19 @@ class NeuralLearner(Learner):
         self._build_model()
 
         print('Training')
-        writer = summary.SummaryWriter(config.get_file_path('losses.tfevents'))
+        summary_path = config.get_file_path('losses.tfevents')
+        if summary_path:
+            writer = summary.SummaryWriter(summary_path)
         progress.start_task('Iteration', options.train_iters)
         for iteration in range(options.train_iters):
             progress.progress(iteration)
             losses_iter = self.model.fit(xs, ys, batch_size=options.batch_size,
                                          num_epochs=options.train_epochs)
-            for e, loss in enumerate(np.mean(losses_iter, axis=1).tolist()):
-                writer.log_scalar(iteration * options.train_epochs + e,
-                                  'loss_epoch', loss)
-            self.on_iter_end((iteration + 1) * options.train_epochs, writer)
+            if summary_path:
+                for e, loss in enumerate(np.mean(losses_iter, axis=1).tolist()):
+                    writer.log_scalar(iteration * options.train_epochs + e,
+                                      'loss_epoch', loss)
+                self.on_iter_end((iteration + 1) * options.train_epochs, writer)
         progress.end_task()
 
     def on_iter_end(self, step, writer):
