@@ -9,13 +9,14 @@ from lasagne.objectives import categorical_crossentropy
 from lasagne.nonlinearities import softmax
 from lasagne.updates import rmsprop
 
-from bt import config, instance
+from bt import config, instance, progress, iterators
 from neural import NeuralLearner, SimpleLasagneModel
 
 parser = config.get_options_parser()
 parser.add_argument('--listener_cell_size', type=int, default=20)
 parser.add_argument('--listener_forget_bias', type=float, default=5.0)
 parser.add_argument('--listener_color_resolution', type=int, default=4)
+parser.add_argument('--listener_eval_batch_size', type=int, default=65536)
 
 
 class ListenerLearner(NeuralLearner):
@@ -28,20 +29,34 @@ class ListenerLearner(NeuralLearner):
         super(ListenerLearner, self).__init__(options.listener_color_resolution)
 
     def predict_and_score(self, eval_instances):
-        xs, y = self._data_to_arrays(eval_instances, test=True)
+        options = config.options()
+
+        predictions = []
+        scores = []
+        batches = iterators.iter_batches(eval_instances, options.listener_eval_batch_size)
+        num_batches = (len(eval_instances) - 1) // options.listener_eval_batch_size + 1
 
         print('Testing')
-        probs = self.model.predict(xs)
-        predict = self.color_vec.unvectorize_all(probs.argmax(axis=1))
-        bucket_volume = (256.0 ** 3) / self.color_vec.num_types
-        scores_arr = np.log(bucket_volume) - np.log(probs[np.arange(len(eval_instances)), y])
-        scores = scores_arr.tolist()
-        return predict, scores
+        progress.start_task('Eval batch', num_batches)
+        for batch_num, batch in enumerate(batches):
+            progress.progress(batch_num)
+            batch = list(batch)
+
+            xs, (y,) = self._data_to_arrays(batch, test=True)
+
+            probs = self.model.predict(xs)
+            predictions.extend(self.color_vec.unvectorize_all(probs.argmax(axis=1)))
+            bucket_volume = (256.0 ** 3) / self.color_vec.num_types
+            scores_arr = np.log(bucket_volume) - np.log(probs[np.arange(len(batch)), y])
+            scores.extend(scores_arr.tolist())
+        progress.end_task()
+
+        return predictions, scores
 
     def on_iter_end(self, step, writer):
         most_common = [desc for desc, count in self.word_counts.most_common(10)]
         insts = [instance.Instance(input=desc) for desc in most_common]
-        xs, y = self._data_to_arrays(insts, test=True)
+        xs, (y,) = self._data_to_arrays(insts, test=True)
         probs = self.model.predict(xs)
         for i, desc in enumerate(most_common):
             dist = probs[i, :]
@@ -71,9 +86,7 @@ class ListenerLearner(NeuralLearner):
             # print('%s -> %s' % (repr(s), repr(color)))
             sentences.append(s)
             colors.append(color)
-        print('Number of sequences: %d' % len(sentences))
 
-        print('Vectorization')
         x = np.zeros((len(sentences), self.seq_vec.max_len), dtype=np.int32)
         y = np.zeros((len(sentences),), dtype=np.int32)
         for i, sentence in enumerate(sentences):

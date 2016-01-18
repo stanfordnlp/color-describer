@@ -17,6 +17,8 @@ parser.add_argument('--train_iters', type=int, default=10,
                     help='Number of iterations')
 parser.add_argument('--train_epochs', type=int, default=100,
                     help='Number of epochs per iteration')
+parser.add_argument('--batch_size', type=int, default=128,
+                    help='Number of examples per minibatch for training and evaluation')
 parser.add_argument('--detect_nans', action='store_true',
                     help='If True, throw an error if a non-finite value is detected.')
 
@@ -298,7 +300,8 @@ class NeuralLearner(Learner):
         progress.start_task('Iteration', options.train_iters)
         for iteration in range(options.train_iters):
             progress.progress(iteration)
-            losses_iter = self.model.fit(xs, ys, batch_size=128, num_epochs=options.train_epochs)
+            losses_iter = self.model.fit(xs, ys, batch_size=options.batch_size,
+                                         num_epochs=options.train_epochs)
             for e, loss in enumerate(np.mean(losses_iter, axis=1).tolist()):
                 writer.log_scalar(iteration * options.train_epochs + e,
                                   'loss_epoch', loss)

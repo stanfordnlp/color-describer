@@ -9,7 +9,7 @@ from lasagne.init import Constant
 from lasagne.nonlinearities import softmax
 from lasagne.updates import rmsprop
 
-from bt import config
+from bt import config, progress, iterators
 from bt.rng import get_rng
 from neural import NeuralLearner, SimpleLasagneModel
 
@@ -17,6 +17,7 @@ parser = config.get_options_parser()
 parser.add_argument('--speaker_cell_size', type=int, default=20)
 parser.add_argument('--speaker_forget_bias', type=float, default=5.0)
 parser.add_argument('--speaker_color_resolution', type=int, default=4)
+parser.add_argument('--speaker_eval_batch_size', type=int, default=16384)
 
 rng = get_rng()
 
@@ -30,42 +31,72 @@ class SpeakerLearner(NeuralLearner):
         options = config.options()
         super(SpeakerLearner, self).__init__(options.speaker_color_resolution)
 
+    @profile
     def predict(self, eval_instances, random=False):
-        (c, _p, mask), y = self._data_to_arrays(eval_instances, test=True)
+        options = config.options()
 
-        print('Testing')
-        done = np.zeros((len(eval_instances),), dtype=np.bool)
-        outputs = [['<s>'] + ['<MASK>'] * (self.seq_vec.max_len - 2)
-                   for _ in eval_instances]
-        length = 0
-        while not done.all() and length < self.seq_vec.max_len - 1:
-            p = self.seq_vec.vectorize_all(outputs)
-            preds = self.model.predict([c, p, mask])
-            if random:
-                indices = sample(preds[:, length, :])
-            else:
-                indices = preds[:, length, :].argmax(axis=1)
-            for out, idx in zip(outputs, indices):
-                token = self.seq_vec.indices_token[idx]
-                if length + 1 < self.seq_vec.max_len - 1:
-                    out[length + 1] = token
+        result = []
+        batches = iterators.iter_batches(eval_instances, options.speaker_eval_batch_size)
+        num_batches = (len(eval_instances) - 1) // options.speaker_eval_batch_size + 1
+
+        print('Predicting')
+        progress.start_task('Predict batch', num_batches)
+        for batch_num, batch in enumerate(batches):
+            progress.progress(batch_num)
+            batch = list(batch)
+
+            (c, _p, mask), (_y,) = self._data_to_arrays(batch, test=True)
+
+            done = np.zeros((len(batch),), dtype=np.bool)
+            outputs = [['<s>'] + ['<MASK>'] * (self.seq_vec.max_len - 2)
+                       for _ in batch]
+            length = 0
+            while not done.all() and length < self.seq_vec.max_len - 1:
+                p = self.seq_vec.vectorize_all(outputs)
+                preds = self.model.predict([c, p, mask])
+                if random:
+                    indices = sample(preds[:, length, :])
                 else:
-                    out.append(token)
-            done = np.logical_or(done, indices == self.seq_vec.token_indices['</s>'])
-            length += 1
-        return [strip_invalid_tokens(o) for o in outputs]
+                    indices = preds[:, length, :].argmax(axis=1)
+                for out, idx in zip(outputs, indices):
+                    token = self.seq_vec.indices_token[idx]
+                    if length + 1 < self.seq_vec.max_len - 1:
+                        out[length + 1] = token
+                    else:
+                        out.append(token)
+                done = np.logical_or(done, indices == self.seq_vec.token_indices['</s>'])
+                length += 1
+            result.extend([strip_invalid_tokens(o) for o in outputs])
+        progress.end_task()
 
+        return result
+
+    @profile
     def score(self, eval_instances):
-        xs, (y,) = self._data_to_arrays(eval_instances, test=True)
-        _, _, mask = xs
+        options = config.options()
 
-        print('Testing')
-        probs = self.model.predict(xs)
-        token_probs = probs[np.arange(probs.shape[0])[:, np.newaxis],
-                            np.arange(probs.shape[1]), y]
-        scores_arr = np.sum(-np.log(token_probs) * mask, axis=1)
-        scores = scores_arr.tolist()
-        return scores
+        result = []
+        batches = iterators.iter_batches(eval_instances, options.speaker_eval_batch_size)
+        num_batches = (len(eval_instances) - 1) // options.speaker_eval_batch_size + 1
+
+        print('Scoring')
+        progress.start_task('Score batch', num_batches)
+        for batch_num, batch in enumerate(batches):
+            progress.progress(batch_num)
+            batch = list(batch)
+
+            xs, (n,) = self._data_to_arrays(batch, test=True)
+            _, _, mask = xs
+
+            probs = self.model.predict(xs)
+            token_probs = probs[np.arange(probs.shape[0])[:, np.newaxis],
+                                np.arange(probs.shape[1]), n]
+            scores_arr = np.sum(-np.log(token_probs) * mask, axis=1)
+            scores = scores_arr.tolist()
+            result.extend(scores)
+        progress.end_task()
+
+        return result
 
     def log_prior_emp(self, input_vars):
         raise NotImplementedError
@@ -77,6 +108,7 @@ class SpeakerLearner(NeuralLearner):
     def sample(self, inputs):
         raise NotImplementedError
 
+    @profile
     def _data_to_arrays(self, training_instances, test=False):
         if not test:
             self.seq_vec.add_all(['<s>'] + inst.output.split() + ['</s>']
@@ -96,9 +128,7 @@ class SpeakerLearner(NeuralLearner):
             colors.append(color)
             previous.append(prev)
             next_tokens.append(next)
-        print('Number of sequences: %d' % len(colors))
 
-        print('Vectorization...')
         c = np.zeros((len(colors),), dtype=np.int32)
         P = np.zeros((len(previous), self.seq_vec.max_len - 1), dtype=np.int32)
         mask = np.zeros((len(previous), self.seq_vec.max_len - 1), dtype=np.int32)
