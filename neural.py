@@ -165,12 +165,12 @@ class ColorVectorizer(object):
         >>> ColorVectorizer((2, 2, 2)).visualize_distribution([0, 0.25, 0, 0.5,
         ...                                                    0, 0, 0, 0.25])
         ... # doctest: +NORMALIZE_WHITESPACE
-        [array([[[  0,  64,  64], [ 63,  64, 192]],
-                [[  0, 192,  64], [191, 192, 192]]]),
-         array([[[ 64,   0,  64], [ 64, 191, 192]],
-                [[192,   0,  64], [192,  63, 192]]]),
-         array([[[ 64,  64,  63], [ 64, 192, 127]],
-                [[192,  64,   0], [192, 192,  63]]])]
+        [array([[[  0,  64,  64], [ 85,  64, 192]],
+                [[  0, 192,  64], [255, 192, 192]]]),
+         array([[[ 64,   0,  64], [ 64, 255, 192]],
+                [[192,   0,  64], [192,  85, 192]]]),
+         array([[[ 64,  64, 127], [ 64, 192, 255]],
+                [[192,  64,   0], [192, 192, 127]]])]
         '''
         dist_3d = np.asarray(dist).reshape(self.resolution)
         # Compute background: RGB for each bucket along each face with one channel set to 0
