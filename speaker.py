@@ -31,7 +31,6 @@ class SpeakerLearner(NeuralLearner):
         options = config.options()
         super(SpeakerLearner, self).__init__(options.speaker_color_resolution)
 
-    @profile
     def predict(self, eval_instances, random=False):
         options = config.options()
 
@@ -71,7 +70,6 @@ class SpeakerLearner(NeuralLearner):
 
         return result
 
-    @profile
     def score(self, eval_instances):
         options = config.options()
 
@@ -108,7 +106,6 @@ class SpeakerLearner(NeuralLearner):
     def sample(self, inputs):
         raise NotImplementedError
 
-    @profile
     def _data_to_arrays(self, training_instances, test=False):
         if not test:
             self.seq_vec.add_all(['<s>'] + inst.output.split() + ['</s>']
