@@ -65,7 +65,7 @@ class SpeakerLearner(NeuralLearner):
                         out.append(token)
                 done = np.logical_or(done, indices == self.seq_vec.token_indices['</s>'])
                 length += 1
-            result.extend([strip_invalid_tokens(o) for o in outputs])
+            result.extend([' '.join(strip_invalid_tokens(o)) for o in outputs])
         progress.end_task()
 
         return result
