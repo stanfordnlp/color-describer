@@ -27,4 +27,4 @@ if [ ! -e tensorflow ]; then
 fi
 
 echo 'Installing testing modules (optional)...'
-pip install nose nose-exclude coverage
+pip install nose nose-exclude coverage mock

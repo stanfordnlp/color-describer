@@ -59,9 +59,10 @@ class SummaryWriter(object):
             self.last_append = t
 
     def flush(self):
-        with open(self.filename, 'ab') as outfile:
-            write_events(outfile, self.queue)
-            del self.queue[:]
+        if self.queue:
+            with open(self.filename, 'ab') as outfile:
+                write_events(outfile, self.queue)
+                del self.queue[:]
 
 
 class SummaryReaderException(Exception):
