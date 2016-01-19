@@ -178,6 +178,10 @@ class MostCommonSpeakerLearner(Learner):
         progress.end_task()
         self.num_examples += len(training_instances)
 
+    @property
+    def num_params(self):
+        return len(self.seen)
+
     def predict_and_score(self, eval_instances):
         most_common = self.seen.most_common(1)[0][0]
         predict = [most_common] * len(eval_instances)
@@ -185,7 +189,7 @@ class MostCommonSpeakerLearner(Learner):
         progress.start_task('Example', len(eval_instances))
         for i, inst in enumerate(eval_instances):
             progress.progress(i)
-            score.append(-np.log(self._get_smoothed_prob(inst.output)))
+            score.append(np.log(self._get_smoothed_prob(inst.output)))
         progress.end_task()
         return predict, score
 
@@ -198,11 +202,11 @@ class MostCommonSpeakerLearner(Learner):
 
 class RandomListenerLearner(Learner):
     def train(self, training_instances):
-        pass
+        self.num_params = 0
 
     def predict_and_score(self, eval_instances):
         predict = [(128, 128, 128)] * len(eval_instances)
-        score = [3.0 * np.log(256.0)] * len(eval_instances)
+        score = [-3.0 * np.log(256.0)] * len(eval_instances)
         return predict, score
 
 
