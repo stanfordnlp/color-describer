@@ -83,6 +83,10 @@ class Histogram(object):
             probs.append(prob)
         return probs
 
+    @property
+    def num_params(self):
+        return sum(len(counter) for _name, counter in self.buckets.items())
+
     def __getstate__(self):
         # `defaultdict`s aren't pickleable. Turn them into regular dicts for pickling.
         state = dict(self.__dict__)
@@ -122,6 +126,8 @@ class HistogramLearner(Learner):
                                         granularity=g, use_progress=True))
         progress.end_task()
 
+        self.num_params = sum(h.num_params for h in self.hists)
+
     def hist_probs(self, color):
         assert self.hists, \
             'No histograms constructed yet; calling predict/score before train?'
@@ -145,7 +151,7 @@ class HistogramLearner(Learner):
             name = self.names[hist_probs.argmax()]
             prob = hist_probs[self.name_to_index[inst.output]]
             predictions.append(name)
-            scores.append(-np.log(prob))
+            scores.append(np.log(prob))
         progress.end_task()
         return predictions, scores
 

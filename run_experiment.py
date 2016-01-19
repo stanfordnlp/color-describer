@@ -49,9 +49,14 @@ def main():
 
     learner = learners.new(options.learner)
 
-    m = ([metrics.log_likelihood, metrics.squared_error]
-         if options.listener else
-         [metrics.log_likelihood, metrics.accuracy])
+    m = [metrics.log_likelihood,
+         metrics.log_likelihood_bits,
+         metrics.perplexity,
+         metrics.aic]
+    if options.listener:
+        m.append(metrics.squared_error)
+    else:
+        m.append(metrics.accuracy)
 
     if options.load:
         with open(options.load, 'rb') as infile:

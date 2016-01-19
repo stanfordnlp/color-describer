@@ -89,7 +89,7 @@ class SpeakerLearner(NeuralLearner):
             probs = self.model.predict(xs)
             token_probs = probs[np.arange(probs.shape[0])[:, np.newaxis],
                                 np.arange(probs.shape[1]), n]
-            scores_arr = np.sum(-np.log(token_probs) * mask, axis=1)
+            scores_arr = np.sum(np.log(token_probs) * mask, axis=1)
             scores = scores_arr.tolist()
             result.extend(scores)
         progress.end_task()

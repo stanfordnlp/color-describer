@@ -317,6 +317,11 @@ class NeuralLearner(Learner):
     def params(self):
         return get_all_params(self.model.l_out)
 
+    @property
+    def num_params(self):
+        all_params = self.params()
+        return sum(np.prod(p.get_value().shape) for p in all_params)
+
     def log_prior_emp(self, input_vars):
         raise NotImplementedError
 

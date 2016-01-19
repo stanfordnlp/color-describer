@@ -34,7 +34,8 @@ def evaluate(learner, eval_data, metrics, metric_names=None, split_id=None):
         ]
 
     split_prefix = split_id + '.' if split_id else ''
-    results = {}
+
+    results = {split_prefix + 'num_params': learner.num_params}
 
     predictions, scores = learner.predict_and_score(eval_data)
     config.dump(predictions, 'predictions.%sjsons' % split_prefix, lines=True)
@@ -43,15 +44,17 @@ def evaluate(learner, eval_data, metrics, metric_names=None, split_id=None):
     for metric, metric_name in zip(metrics, metric_names):
         prefix = split_prefix + (metric_name + '.' if metric_name else '')
 
-        inst_outputs = metric(eval_data, predictions, scores)
+        inst_outputs = metric(eval_data, predictions, scores, learner)
 
         mean = np.mean(inst_outputs)
+        gmean = np.exp(np.log(inst_outputs).mean())
         sum = np.sum(inst_outputs)
         std = np.std(inst_outputs)
         # ci_lower, ci_upper = bootstrap.ci(inst_outputs)
 
         results.update({
             prefix + 'mean': mean,
+            prefix + 'gmean': gmean,
             prefix + 'sum': sum,
             prefix + 'std': std,
             # prefix + 'ci_lower': ci_lower,

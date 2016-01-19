@@ -47,7 +47,7 @@ class ListenerLearner(NeuralLearner):
             probs = self.model.predict(xs)
             predictions.extend(self.color_vec.unvectorize_all(probs.argmax(axis=1)))
             bucket_volume = (256.0 ** 3) / self.color_vec.num_types
-            scores_arr = np.log(bucket_volume) - np.log(probs[np.arange(len(batch)), y])
+            scores_arr = np.log(probs[np.arange(len(batch)), y]) - np.log(bucket_volume)
             scores.extend(scores_arr.tolist())
         progress.end_task()
 
