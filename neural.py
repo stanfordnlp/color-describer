@@ -9,7 +9,6 @@ from theano.compile import MonitorMode
 
 from bt import config, progress, summary
 from bt.learner import Learner
-from bt.instance import Instance
 from bt.rng import get_rng
 
 parser = config.get_options_parser()
@@ -202,10 +201,12 @@ class SimpleLasagneModel(object):
         if not isinstance(target_vars, Sequence):
             raise ValueError('target_vars should be a sequence, instead got %s' % (input_vars,))
 
+        self.input_vars = input_vars
         self.l_out = l_out
         self.loss = loss
+        self.optimizer = optimizer
 
-        params = get_all_params(l_out, trainable=True)
+        params = self.params()
         (train_loss,
          train_loss_grads,
          synth_vars) = self.get_train_loss(target_vars, params)
@@ -216,11 +217,16 @@ class SimpleLasagneModel(object):
             mode = None
         print('Compiling training function')
         self.train_fn = theano.function(input_vars + target_vars + synth_vars,
-                                        train_loss, updates=updates, mode=mode)
+                                        train_loss, updates=updates, mode=mode,
+                                        on_unused_input='warn')
 
         test_prediction = get_output(l_out, deterministic=True)
         print('Compiling prediction function')
-        self.predict_fn = theano.function(input_vars, test_prediction, mode=mode)
+        self.predict_fn = theano.function(input_vars, test_prediction, mode=mode,
+                                          on_unused_input='ignore')
+
+    def params(self):
+        return get_all_params(self.l_out, trainable=True)
 
     def get_train_loss(self, target_vars, params):
         assert len(target_vars) == 1
@@ -262,8 +268,10 @@ class SimpleLasagneModel(object):
         '''Lifted mostly verbatim from iterate_minibatches in
         https://github.com/Lasagne/Lasagne/blob/master/examples/mnist.py'''
         num_examples = len(targets[0])
-        assert all(len(X) == num_examples for X in inputs)
-        assert all(len(y) == num_examples for y in targets)
+        assert all(len(X) == num_examples for X in inputs), \
+            repr([type(X) for X in inputs] + [type(y) for y in targets])
+        assert all(len(y) == num_examples for y in targets), \
+            repr([type(X) for X in inputs] + [type(y) for y in targets])
         if shuffle:
             indices = np.arange(num_examples)
             rng.shuffle(indices)
@@ -295,7 +303,11 @@ class NeuralLearner(Learner):
         xs, ys = self._data_to_arrays(training_instances)
         self._build_model()
 
-        print('Training')
+        print('Training priors')
+        self.prior_emp.fit(xs, ys)
+        self.prior_smooth.fit(xs, ys)
+
+        print('Training conditional model')
         summary_path = config.get_file_path('losses.tfevents')
         if summary_path:
             writer = summary.SummaryWriter(summary_path)
@@ -315,7 +327,7 @@ class NeuralLearner(Learner):
         pass
 
     def params(self):
-        return get_all_params(self.model.l_out)
+        return self.model.params()
 
     @property
     def num_params(self):
@@ -323,10 +335,10 @@ class NeuralLearner(Learner):
         return sum(np.prod(p.get_value().shape) for p in all_params)
 
     def log_prior_emp(self, input_vars):
-        raise NotImplementedError
+        return self.prior_emp.apply(input_vars)
 
     def log_prior_smooth(self, input_vars):
-        raise NotImplementedError
+        return self.prior_smooth.apply(input_vars)
 
     def sample(self, inputs):
         raise NotImplementedError
@@ -336,18 +348,20 @@ class NeuralLearner(Learner):
         return [self.dataset[i].stripped() for i in indices]
 
     def sample_joint_emp(self, num_samples=1):
-        inputs = self.sample_prior_emp(num_samples)
-        outputs = self.sample(inputs)
-        return [Instance(input=inp, output=out) for inp, out in zip(inputs, outputs)]
+        input_insts = self.sample_prior_emp(num_samples)
+        outputs = self.sample(input_insts)
+        for inst, out in zip(input_insts, outputs):
+            inst.output = out
+        return input_insts
 
     def log_joint_smooth(self, input_vars, target_var):
         return (self.log_prior_smooth(input_vars) -
-                self.model.loss(get_output(self.model._get_l_out(input_vars)),
+                self.model.loss(get_output(self._get_l_out(input_vars)),
                                 target_var))
 
     def log_joint_emp(self, input_vars, target_var):
         return (self.log_prior_emp(input_vars) -
-                self.model.loss(get_output(self.model._get_l_out(input_vars)),
+                self.model.loss(get_output(self._get_l_out(input_vars)),
                                 target_var))
 
     def __getstate__(self):

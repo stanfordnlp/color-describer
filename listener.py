@@ -1,5 +1,6 @@
 import colorsys
 import numpy as np
+import theano
 import theano.tensor as T
 from collections import Counter
 from lasagne.layers import InputLayer, DropoutLayer, DenseLayer, EmbeddingLayer, NonlinearityLayer
@@ -19,6 +20,33 @@ parser.add_argument('--listener_color_resolution', type=int, default=4)
 parser.add_argument('--listener_eval_batch_size', type=int, default=65536)
 
 
+class UnigramPrior(object):
+    def __init__(self, vocab_size, mask_index=None):
+        self.counts = np.zeros((vocab_size,), dtype=np.int32)
+        self.total = 0
+        self.mask_index = mask_index
+        self.log_probs = None
+
+    def fit(self, xs, ys):
+        (x,) = xs
+        counts = np.bincount(x.flatten(), minlength=self.counts.shape[0])
+        if self.mask_index is not None:
+            counts[self.mask_index] = 0
+        self.counts += counts
+        self.total += np.sum(counts)
+        self.log_probs = None
+
+    def apply(self, input_vars):
+        (x,) = input_vars
+        if self.log_probs is None:
+            self.log_probs = theano.shared(np.log(self.counts / self.total).astype(np.float32))
+
+        token_probs = self.log_probs[x]
+        if self.mask_index is not None:
+            token_probs = token_probs * T.cast((x == self.mask_index), 'float32')
+        return token_probs.sum()
+
+
 class ListenerLearner(NeuralLearner):
     '''
     An LSTM-based listener (guesses colors from descriptions).
@@ -28,7 +56,7 @@ class ListenerLearner(NeuralLearner):
         self.word_counts = Counter()
         super(ListenerLearner, self).__init__(options.listener_color_resolution)
 
-    def predict_and_score(self, eval_instances):
+    def predict_and_score(self, eval_instances, random=False):
         options = config.options()
 
         predictions = []
@@ -45,7 +73,7 @@ class ListenerLearner(NeuralLearner):
             xs, (y,) = self._data_to_arrays(batch, test=True)
 
             probs = self.model.predict(xs)
-            predictions.extend(self.color_vec.unvectorize_all(probs.argmax(axis=1)))
+            predictions.extend(self.color_vec.unvectorize_all(probs.argmax(axis=1), random=random))
             bucket_volume = (256.0 ** 3) / self.color_vec.num_types
             scores_arr = np.log(probs[np.arange(len(batch)), y]) - np.log(bucket_volume)
             scores.extend(scores_arr.tolist())
@@ -64,18 +92,21 @@ class ListenerLearner(NeuralLearner):
                 writer.log_image(step, 'listener/%s/%s' % (desc, channel), image)
         super(ListenerLearner, self).on_iter_end(step, writer)
 
-    def _data_to_arrays(self, training_instances, test=False):
+    def _data_to_arrays(self, training_instances, test=False, inverted=False):
+        get_i, get_o = (lambda inst: inst.input), (lambda inst: inst.output)
+        get_desc, get_color = (get_o, get_i) if inverted else (get_i, get_o)
+
         if not test:
-            self.seq_vec.add_all(['<s>'] + inst.input.split() + ['</s>']
+            self.seq_vec.add_all(['<s>'] + get_desc(inst).split() + ['</s>']
                                  for inst in training_instances)
 
         sentences = []
         colors = []
         for i, inst in enumerate(training_instances):
-            self.word_counts.update([inst.input])
-            desc = inst.input.split()
-            if inst.output:
-                (hue, sat, val) = inst.output
+            self.word_counts.update([get_desc(inst)])
+            desc = get_desc(inst).split()
+            if get_color(inst):
+                (hue, sat, val) = get_color(inst)
             else:
                 assert test
                 hue = sat = val = 0.0
@@ -95,15 +126,8 @@ class ListenerLearner(NeuralLearner):
 
         return [x], [y]
 
-    def log_prior_emp(self, input_vars):
-        raise NotImplementedError
-
-    def log_prior_smooth(self, input_vars):
-        # TODO
-        return self.log_prior_emp(input_vars)
-
     def sample(self, inputs):
-        raise NotImplementedError
+        return self.predict_and_score(inputs, random=True)[0]
 
     def _build_model(self, model_class=SimpleLasagneModel):
         input_var = T.imatrix('inputs')
@@ -113,6 +137,9 @@ class ListenerLearner(NeuralLearner):
 
         self.model = model_class([input_var], [target_var], l_out,
                                  loss=categorical_crossentropy, optimizer=rmsprop)
+
+        self.prior_emp = UnigramPrior(vocab_size=len(self.seq_vec.tokens))
+        self.prior_smooth = UnigramPrior(vocab_size=len(self.seq_vec.tokens))  # TODO: smoothing
 
     def _get_l_out(self, input_vars):
         options = config.options()

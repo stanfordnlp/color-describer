@@ -22,6 +22,15 @@ parser.add_argument('--speaker_eval_batch_size', type=int, default=16384)
 rng = get_rng()
 
 
+class UniformPrior(object):
+    def fit(self, xs, ys):
+        pass
+
+    def apply(self, input_vars):
+        c, _, _ = input_vars
+        return -3.0 * np.log(256.0) * T.ones_like(c)
+
+
 class SpeakerLearner(NeuralLearner):
     '''
     An speaker with a feedforward neural net color input passed into an LSTM
@@ -96,29 +105,30 @@ class SpeakerLearner(NeuralLearner):
 
         return result
 
-    def log_prior_emp(self, input_vars):
-        raise NotImplementedError
-
-    def log_prior_smooth(self, input_vars):
-        # TODO
-        return self.log_prior_emp(input_vars)
-
     def sample(self, inputs):
-        raise NotImplementedError
+        return self.predict(inputs, random=True)
 
-    def _data_to_arrays(self, training_instances, test=False):
+    def _data_to_arrays(self, training_instances, test=False, inverted=False):
+        get_i, get_o = (lambda inst: inst.input), (lambda inst: inst.output)
+        get_color, get_desc = (get_o, get_i) if inverted else (get_i, get_o)
+
         if not test:
-            self.seq_vec.add_all(['<s>'] + inst.output.split() + ['</s>']
+            self.seq_vec.add_all(['<s>'] + get_desc(inst).split() + ['</s>']
                                  for inst in training_instances)
 
         colors = []
         previous = []
         next_tokens = []
         for i, inst in enumerate(training_instances):
-            desc, (hue, sat, val) = inst.output.split(), inst.input
+            desc, (hue, sat, val) = get_desc(inst), get_color(inst)
             color_0_1 = colorsys.hsv_to_rgb(hue / 360.0, sat / 100.0, val / 100.0)
             color = tuple(min(d * 256, 255) for d in color_0_1)
-            full = ['<s>'] + desc + ['</s>'] + ['<MASK>'] * (self.seq_vec.max_len - 2 - len(desc))
+            if test:
+                full = ['<s>'] + ['<MASK>'] * (self.seq_vec.max_len - 2)
+            else:
+                desc = desc.split()
+                full = (['<s>'] + desc + ['</s>'] +
+                        ['<MASK>'] * (self.seq_vec.max_len - 2 - len(desc)))
             prev = full[:-1]
             next = full[1:]
             # print('%s, %s -> %s' % (repr(color), repr(prev), repr(next)))
@@ -153,6 +163,9 @@ class SpeakerLearner(NeuralLearner):
         l_out = self._get_l_out(input_vars)
         self.model = model_class(input_vars, [target_var], l_out,
                                  loss=crossentropy_categorical_1hot_nd, optimizer=rmsprop)
+
+        self.prior_emp = UniformPrior()
+        self.prior_smooth = UniformPrior()
 
     def _get_l_out(self, input_vars):
         options = config.options()
