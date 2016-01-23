@@ -1,3 +1,4 @@
+import colorsys
 import lasagne
 import numpy as np
 import operator
@@ -119,38 +120,51 @@ class ColorVectorizer(object):
         '''
         return np.array([self.vectorize(c) for c in colors], dtype=np.int32)
 
-    def unvectorize(self, bucket, random=False):
+    def unvectorize(self, bucket, random=False, hsv=False):
         '''
         :param int bucket: The id of a color bucket
-        :param random: If true, sample a random color from the bucket. Otherwise,
+        :param random: If `True`, sample a random color from the bucket. Otherwise,
                        return the center of the bucket.
+        :param hsv: If `True`, return colors in HSV format [0 <= hue <= 360,
+                    0 <= sat <= 100, 0 <= val <= 100]; otherwise, RGB
+                    [0 <= r/g/b <= 256].
         :return tuple(int): A color from the bucket with id `bucket`.
 
         >>> ColorVectorizer((2, 2, 2)).unvectorize(0)
         (64, 64, 64)
         >>> ColorVectorizer((2, 2, 2)).unvectorize(4)
         (192, 64, 64)
+        >>> ColorVectorizer((2, 2, 2)).unvectorize(4, hsv=True)
+        (0, 66, 75)
         '''
         bucket_start = (
             (bucket / (self.resolution[1] * self.resolution[2]) % self.resolution[0]),
             (bucket / self.resolution[2]) % self.resolution[1],
             bucket % self.resolution[2],
         )
-        return tuple((rng.randint(d * size, (d + 1) * size) if random
-                      else (d * size + size // 2))
-                     for d, size in zip(bucket_start, self.bucket_sizes))
+        rgb = tuple((rng.randint(d * size, (d + 1) * size) if random
+                     else (d * size + size // 2))
+                    for d, size in zip(bucket_start, self.bucket_sizes))
+        if hsv:
+            hue, sat, val = colorsys.rgb_to_hsv(*(d / 256.0 for d in rgb))
+            return (int(hue * 360.0), int(sat * 100.0), int(val * 100.0))
+        else:
+            return rgb
 
-    def unvectorize_all(self, buckets, random=False):
+    def unvectorize_all(self, buckets, random=False, hsv=False):
         '''
         :param Sequence(int) buckets: A sequence of ids of color buckets
         :param random: If true, sample a random color from each bucket. Otherwise,
                        return the center of the bucket.
+        :param hsv: If `True`, return colors in HSV format; otherwise, RGB.
         :return list(tuple(int)): One color from each bucket in `buckets`
 
         >>> ColorVectorizer((2, 2, 2)).unvectorize_all([0, 4])
         [(64, 64, 64), (192, 64, 64)]
+        >>> ColorVectorizer((2, 2, 2)).unvectorize_all([0, 4], hsv=True)
+        [(0, 0, 25), (0, 66, 75)]
         '''
-        return [self.unvectorize(b, random=random) for b in buckets]
+        return [self.unvectorize(b, random=random, hsv=hsv) for b in buckets]
 
     def visualize_distribution(self, dist):
         '''
@@ -193,7 +207,7 @@ class ColorVectorizer(object):
 
 
 class SimpleLasagneModel(object):
-    def __init__(self, input_vars, target_vars, l_out, loss, optimizer):
+    def __init__(self, input_vars, target_vars, l_out, loss, optimizer, id=None):
         options = config.options()
 
         if not isinstance(input_vars, Sequence):
@@ -205,6 +219,9 @@ class SimpleLasagneModel(object):
         self.l_out = l_out
         self.loss = loss
         self.optimizer = optimizer
+        self.id = id
+        id_tag = (self.id + '/') if self.id else ''
+        id_tag_log = (self.id + ': ') if self.id else ''
 
         params = self.params()
         (train_loss,
@@ -215,15 +232,18 @@ class SimpleLasagneModel(object):
             mode = MonitorMode(post_func=detect_nan)
         else:
             mode = None
-        print('Compiling training function')
-        self.train_fn = theano.function(input_vars + target_vars + synth_vars,
+        print(id_tag_log + 'Compiling training function')
+        params = input_vars + target_vars + synth_vars
+        print('params = %s' % (params,))
+        self.train_fn = theano.function(params,
                                         train_loss, updates=updates, mode=mode,
-                                        on_unused_input='warn')
+                                        name=id_tag + 'train', on_unused_input='warn')
 
         test_prediction = get_output(l_out, deterministic=True)
-        print('Compiling prediction function')
+        print(id_tag_log + 'Compiling prediction function')
+        print('params = %s' % (input_vars,))
         self.predict_fn = theano.function(input_vars, test_prediction, mode=mode,
-                                          on_unused_input='ignore')
+                                          name=id_tag + 'predict', on_unused_input='ignore')
 
     def params(self):
         return get_all_params(self.l_out, trainable=True)
@@ -250,6 +270,8 @@ class SimpleLasagneModel(object):
             progress.start_task('Minibatch', num_minibatches_approx)
             for i, batch in enumerate(self.minibatches(Xs, ys, batch_size, shuffle=True)):
                 progress.progress(i)
+                print('types: %s' % ([type(v) for t in batch for v in t],))
+                print('shapes: %s' % ([v.shape for t in batch for v in t],))
                 inputs, targets, synth = batch
                 loss_epoch.append(self.train_fn(*inputs + targets + synth))
             progress.end_task()
@@ -262,6 +284,8 @@ class SimpleLasagneModel(object):
     def predict(self, Xs):
         if not isinstance(Xs, Sequence):
             raise ValueError('Xs should be a sequence, instead got %s' % (Xs,))
+        id_tag_log = (self.id + ': ') if self.id else ''
+        print(id_tag_log + 'predict shapes: %s' % [x.shape for x in Xs])
         return self.predict_fn(*Xs)
 
     def minibatches(self, inputs, targets, batch_size, shuffle=False):
@@ -289,25 +313,27 @@ class NeuralLearner(Learner):
     A base class for Lasagne-based learners.
     '''
 
-    def __init__(self, color_resolution):
+    def __init__(self, color_resolution, id=None):
         super(NeuralLearner, self).__init__()
         res = color_resolution
 
         self.seq_vec = SequenceVectorizer()
         self.color_vec = ColorVectorizer((res, res, res))
+        self.id = id
 
     def train(self, training_instances):
         options = config.options()
 
         self.dataset = training_instances
-        xs, ys = self._data_to_arrays(training_instances)
+        xs, ys = self._data_to_arrays(training_instances, init_vectorizer=True)
         self._build_model()
 
-        print('Training priors')
+        id_tag = (self.id + ': ') if self.id else ''
+        print(id_tag + 'Training priors')
         self.prior_emp.fit(xs, ys)
         self.prior_smooth.fit(xs, ys)
 
-        print('Training conditional model')
+        print(id_tag + 'Training conditional model')
         summary_path = config.get_file_path('losses.tfevents')
         if summary_path:
             writer = summary.SummaryWriter(summary_path)

@@ -51,10 +51,10 @@ class ListenerLearner(NeuralLearner):
     '''
     An LSTM-based listener (guesses colors from descriptions).
     '''
-    def __init__(self):
+    def __init__(self, id=None):
         options = config.options()
         self.word_counts = Counter()
-        super(ListenerLearner, self).__init__(options.listener_color_resolution)
+        super(ListenerLearner, self).__init__(options.listener_color_resolution, id=id)
 
     def predict_and_score(self, eval_instances, random=False):
         options = config.options()
@@ -73,7 +73,8 @@ class ListenerLearner(NeuralLearner):
             xs, (y,) = self._data_to_arrays(batch, test=True)
 
             probs = self.model.predict(xs)
-            predictions.extend(self.color_vec.unvectorize_all(probs.argmax(axis=1), random=random))
+            predictions.extend(self.color_vec.unvectorize_all(probs.argmax(axis=1),
+                                                              random=random, hsv=True))
             bucket_volume = (256.0 ** 3) / self.color_vec.num_types
             scores_arr = np.log(probs[np.arange(len(batch)), y]) - np.log(bucket_volume)
             scores.extend(scores_arr.tolist())
@@ -92,11 +93,12 @@ class ListenerLearner(NeuralLearner):
                 writer.log_image(step, 'listener/%s/%s' % (desc, channel), image)
         super(ListenerLearner, self).on_iter_end(step, writer)
 
-    def _data_to_arrays(self, training_instances, test=False, inverted=False):
+    def _data_to_arrays(self, training_instances,
+                        init_vectorizer=False, test=False, inverted=False):
         get_i, get_o = (lambda inst: inst.input), (lambda inst: inst.output)
         get_desc, get_color = (get_o, get_i) if inverted else (get_i, get_o)
 
-        if not test:
+        if init_vectorizer:
             self.seq_vec.add_all(['<s>'] + get_desc(inst).split() + ['</s>']
                                  for inst in training_instances)
 
@@ -111,6 +113,7 @@ class ListenerLearner(NeuralLearner):
                 assert test
                 hue = sat = val = 0.0
             color_0_1 = colorsys.hsv_to_rgb(hue / 360.0, sat / 100.0, val / 100.0)
+            assert all(0.0 <= d <= 1.0 for d in color_0_1), (get_color(inst), color_0_1)
             color = tuple(min(d * 256, 255) for d in color_0_1)
             s = ['<s>'] * (self.seq_vec.max_len - 1 - len(desc)) + desc
             s.append('</s>')
@@ -130,33 +133,41 @@ class ListenerLearner(NeuralLearner):
         return self.predict_and_score(inputs, random=True)[0]
 
     def _build_model(self, model_class=SimpleLasagneModel):
-        input_var = T.imatrix('inputs')
-        target_var = T.ivector('targets')
+        id_tag = (self.id + '/') if self.id else ''
+        input_var = T.imatrix(id_tag + 'inputs')
+        target_var = T.ivector(id_tag + 'targets')
 
         l_out = self._get_l_out([input_var])
 
         self.model = model_class([input_var], [target_var], l_out,
-                                 loss=categorical_crossentropy, optimizer=rmsprop)
+                                 loss=categorical_crossentropy, optimizer=rmsprop, id=self.id)
 
         self.prior_emp = UnigramPrior(vocab_size=len(self.seq_vec.tokens))
         self.prior_smooth = UnigramPrior(vocab_size=len(self.seq_vec.tokens))  # TODO: smoothing
 
     def _get_l_out(self, input_vars):
         options = config.options()
+        id_tag = (self.id + '/') if self.id else ''
 
         input_var = input_vars[0]
 
-        l_in = InputLayer(shape=(None, self.seq_vec.max_len), input_var=input_var)
+        l_in = InputLayer(shape=(None, self.seq_vec.max_len), input_var=input_var,
+                          name=id_tag + 'desc_input')
         l_in_embed = EmbeddingLayer(l_in, input_size=len(self.seq_vec.tokens),
-                                    output_size=options.listener_cell_size)
+                                    output_size=options.listener_cell_size,
+                                    name=id_tag + 'desc_embed')
         l_lstm1 = LSTMLayer(l_in_embed, num_units=options.listener_cell_size,
-                            forgetgate=Gate(b=Constant(options.listener_forget_bias)))
-        l_lstm1_drop = DropoutLayer(l_lstm1, p=0.2)
+                            forgetgate=Gate(b=Constant(options.listener_forget_bias)),
+                            name=id_tag + 'lstm1')
+        l_lstm1_drop = DropoutLayer(l_lstm1, p=0.2, name=id_tag + 'lstm1_drop')
         l_lstm2 = LSTMLayer(l_lstm1_drop, num_units=options.listener_cell_size,
-                            forgetgate=Gate(b=Constant(options.listener_forget_bias)))
-        l_lstm2_drop = DropoutLayer(l_lstm2, p=0.2)
+                            forgetgate=Gate(b=Constant(options.listener_forget_bias)),
+                            name=id_tag + 'lstm2')
+        l_lstm2_drop = DropoutLayer(l_lstm2, p=0.2, name=id_tag + 'lstm2_drop')
 
-        l_hidden = DenseLayer(l_lstm2_drop, num_units=options.listener_cell_size, nonlinearity=None)
-        l_hidden_drop = DropoutLayer(l_hidden, p=0.2)
-        l_scores = DenseLayer(l_hidden_drop, num_units=self.color_vec.num_types, nonlinearity=None)
-        return NonlinearityLayer(l_scores, nonlinearity=softmax)
+        l_hidden = DenseLayer(l_lstm2_drop, num_units=options.listener_cell_size, nonlinearity=None,
+                              name=id_tag + 'hidden')
+        l_hidden_drop = DropoutLayer(l_hidden, p=0.2, name=id_tag + 'hidden_drop')
+        l_scores = DenseLayer(l_hidden_drop, num_units=self.color_vec.num_types, nonlinearity=None,
+                              name=id_tag + 'scores')
+        return NonlinearityLayer(l_scores, nonlinearity=softmax, name=id_tag + 'out')

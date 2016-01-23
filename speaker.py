@@ -36,9 +36,9 @@ class SpeakerLearner(NeuralLearner):
     An speaker with a feedforward neural net color input passed into an LSTM
     to generate a description.
     '''
-    def __init__(self):
+    def __init__(self, id=None):
         options = config.options()
-        super(SpeakerLearner, self).__init__(options.speaker_color_resolution)
+        super(SpeakerLearner, self).__init__(options.speaker_color_resolution, id=id)
 
     def predict(self, eval_instances, random=False):
         options = config.options()
@@ -108,11 +108,12 @@ class SpeakerLearner(NeuralLearner):
     def sample(self, inputs):
         return self.predict(inputs, random=True)
 
-    def _data_to_arrays(self, training_instances, test=False, inverted=False):
+    def _data_to_arrays(self, training_instances,
+                        init_vectorizer=False, test=False, inverted=False):
         get_i, get_o = (lambda inst: inst.input), (lambda inst: inst.output)
         get_color, get_desc = (get_o, get_i) if inverted else (get_i, get_o)
 
-        if not test:
+        if init_vectorizer:
             self.seq_vec.add_all(['<s>'] + get_desc(inst).split() + ['</s>']
                                  for inst in training_instances)
 
@@ -155,13 +156,14 @@ class SpeakerLearner(NeuralLearner):
         return [c, P, mask], [N]
 
     def _build_model(self, model_class=SimpleLasagneModel):
-        input_vars = [T.imatrix('inputs'),
-                      T.imatrix('previous'),
-                      T.imatrix('mask')]
-        target_var = T.imatrix('targets')
+        id_tag = (self.id + '/') if self.id else ''
+        input_vars = [T.imatrix(id_tag + 'inputs'),
+                      T.imatrix(id_tag + 'previous'),
+                      T.imatrix(id_tag + 'mask')]
+        target_var = T.imatrix(id_tag + 'targets')
 
         l_out = self._get_l_out(input_vars)
-        self.model = model_class(input_vars, [target_var], l_out,
+        self.model = model_class(input_vars, [target_var], l_out, id=self.id,
                                  loss=crossentropy_categorical_1hot_nd, optimizer=rmsprop)
 
         self.prior_emp = UniformPrior()
@@ -169,27 +171,37 @@ class SpeakerLearner(NeuralLearner):
 
     def _get_l_out(self, input_vars):
         options = config.options()
+        id_tag = (self.id + '/') if self.id else ''
 
         input_var, prev_output_var, mask_var = input_vars
 
-        l_color = InputLayer(shape=(None, self.seq_vec.max_len - 1), input_var=input_var)
+        l_color = InputLayer(shape=(None, self.seq_vec.max_len - 1), input_var=input_var,
+                             name=id_tag + 'color_input')
         l_color_embed = EmbeddingLayer(l_color, input_size=self.color_vec.num_types,
-                                       output_size=options.speaker_cell_size)
+                                       output_size=options.speaker_cell_size,
+                                       name=id_tag + 'color_embed')
         l_prev_out = InputLayer(shape=(None, self.seq_vec.max_len - 1),
-                                input_var=prev_output_var)
+                                input_var=prev_output_var,
+                                name=id_tag + 'prev_input')
         l_prev_embed = EmbeddingLayer(l_prev_out, input_size=len(self.seq_vec.tokens),
-                                      output_size=options.speaker_cell_size)
-        l_in = ConcatLayer([l_color_embed, l_prev_embed], axis=2)
+                                      output_size=options.speaker_cell_size,
+                                      name=id_tag + 'prev_embed')
+        l_in = ConcatLayer([l_color_embed, l_prev_embed], axis=2, name=id_tag + 'color_prev')
         l_mask_in = InputLayer(shape=(None, self.seq_vec.max_len - 1),
-                               input_var=mask_var)
+                               input_var=mask_var, name=id_tag + 'mask_input')
         l_lstm1 = LSTMLayer(l_in, mask_input=l_mask_in, num_units=options.speaker_cell_size,
-                            forgetgate=Gate(b=Constant(options.speaker_forget_bias)))
-        l_lstm1_drop = DropoutLayer(l_lstm1, p=0.2)
+                            forgetgate=Gate(b=Constant(options.speaker_forget_bias)),
+                            name=id_tag + 'lstm1')
+        l_lstm1_drop = DropoutLayer(l_lstm1, p=0.2, name=id_tag + 'lstm1_drop')
         l_lstm2 = LSTMLayer(l_lstm1_drop, num_units=len(self.seq_vec.tokens),
-                            forgetgate=Gate(b=Constant(options.speaker_forget_bias)))
-        l_shape = ReshapeLayer(l_lstm2, (-1, len(self.seq_vec.tokens)))
-        l_softmax = NonlinearityLayer(l_shape, nonlinearity=softmax)
-        return ReshapeLayer(l_softmax, (-1, self.seq_vec.max_len - 1, len(self.seq_vec.tokens)))
+                            forgetgate=Gate(b=Constant(options.speaker_forget_bias)),
+                            name=id_tag + 'lstm2')
+        l_shape = ReshapeLayer(l_lstm2, (-1, len(self.seq_vec.tokens)),
+                               name=id_tag + 'reshape')
+        l_softmax = NonlinearityLayer(l_shape, nonlinearity=softmax,
+                                      name=id_tag + 'softmax')
+        return ReshapeLayer(l_softmax, (-1, self.seq_vec.max_len - 1, len(self.seq_vec.tokens)),
+                            name=id_tag + 'out')
 
 
 def sample(a, temperature=1.0):

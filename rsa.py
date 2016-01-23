@@ -64,20 +64,21 @@ class RSASubModel(SimpleLasagneModel):
     '''
     A SimpleLasagneModel for a subcomponent of an RSA graph.
     '''
-    def __init__(self, input_vars, target_vars, l_out, loss, optimizer):
-        super(RSASubModel, self).__init__(input_vars, target_vars, l_out, loss, optimizer)
+    def __init__(self, input_vars, target_vars, l_out, loss, optimizer, id=None):
+        super(RSASubModel, self).__init__(input_vars, target_vars, l_out, loss, optimizer, id)
         if len(target_vars) != 1:
             raise ValueError('target_vars should be a sequence of length 1, instead got %s' %
                              (target_vars,))
         self.target_var = target_vars[0]
 
     def build_sample_vars(self, num_other_agents):
-        self.sample_inputs_self = [v.type('%s_sample_self' % v.name) for v in self.input_vars]
+        self.sample_inputs_self = [v.type('%s_sample_self' % (v.name,))
+                                   for v in self.input_vars]
         self.sample_inputs_others = [[v.type('%s_sample_other%d' % (v.name, i))
                                       for v in self.input_vars]
                                      for i in range(num_other_agents)]
         t = self.target_var
-        self.sample_target_self = t.type('%s_sample_self' % t.name)
+        self.sample_target_self = t.type('%s_sample_self' % (t.name,))
         self.sample_target_others = [t.type('%s_sample_other%d' % (t.name, i))
                                      for i in range(num_other_agents)]
 
@@ -90,8 +91,8 @@ class RSASubModel(SimpleLasagneModel):
 
     def data_to_synth_arrays(self, agent, samples_self, samples_others):
         def flatten(arrays):
-            inputs, target = arrays
-            return list(inputs) + [target]
+            inputs, targets = arrays
+            return inputs + targets
 
         return [arr
                 for i, samples in enumerate([samples_self] + samples_others)
@@ -99,7 +100,7 @@ class RSASubModel(SimpleLasagneModel):
 
 
 class RSAGraphModel(SimpleLasagneModel):
-    def __init__(self, listeners, speakers, eval_agent):
+    def __init__(self, listeners, speakers, eval_agent, id=None):
         self.listeners = listeners
         self.speakers = speakers
         self.eval_agent = eval_agent
@@ -109,7 +110,7 @@ class RSAGraphModel(SimpleLasagneModel):
                        [speaker.model.target_var for speaker in speakers])
         super(RSAGraphModel, self).__init__(input_vars, target_vars,
                                             l_out=eval_agent.model.l_out,
-                                            loss=None, optimizer=rmsprop)
+                                            loss=None, optimizer=rmsprop, id=id)
 
     def params(self):
         result = []
@@ -149,24 +150,25 @@ class RSAGraphModel(SimpleLasagneModel):
                                          agent_q.model.sample_target_others[other_idx])
             )
 
+        id_tag = (self.id + ': ') if self.id else ''
         # \alpha * KL(dataset || L) = \alpha * log L(dataset) + C
-        print('loss: KL(dataset || L)')
+        print(id_tag + 'loss: KL(dataset || L)')
         est_loss = t_sum(weighted_mean(alpha, loss_out(listener, listener.model.l_out,
                                                        listener.model.target_var))
                          for alpha, listener in zip(options.rsa_alpha, self.listeners))
         # \beta * KL(dataset || S) = \beta * log S(dataset) + C
-        print('loss: KL(dataset || S)')
+        print(id_tag + 'loss: KL(dataset || S)')
         est_loss += t_sum(weighted_mean(beta, loss_out(speaker, speaker.model.l_out,
                                                        speaker.model.target_var))
                           for beta, speaker in zip(options.rsa_beta, self.speakers))
 
         # \mu * KL(L || S)
-        print('loss: KL(L || S)')
+        print(id_tag + 'loss: KL(L || S)')
         est_loss += t_sum(mu *
                           kl(listener, speaker, k)
                           for mu, (listener, j, speaker, k) in zip(options.rsa_mu, self.dyads()))
         # \nu * KL(S || L)
-        print('loss: KL(S || L)')
+        print(id_tag + 'loss: KL(S || L)')
         est_loss += t_sum(nu *
                           kl(speaker, listener, j)
                           for nu, (listener, j, speaker, k) in zip(options.rsa_nu, self.dyads()))
@@ -181,16 +183,17 @@ class RSAGraphModel(SimpleLasagneModel):
             loss = agent.model.loss(pred, target_var)
             return jacobian(loss, params, disconnected_inputs='ignore')
 
+        id_tag = (self.id + ': ') if self.id else ''
         # alpha and beta: train the agents directly against the dataset.
         #   \alpha_j E_D [-d/d\theta_j log L(c | m; \theta_j)]
-        print('grad: alpha')
+        print(id_tag + 'grad: alpha')
         est_grad = t_sum((weighted_mean(alpha,
                                         loss_grad(listener, listener.model.l_out,
                                                   listener.model.target_var))
                           for alpha, listener in zip(options.rsa_alpha, self.listeners)),
                          nested=True)
         #   \beta_k E_D [-d/d\phi_k log S(m | c; \phi_k)]
-        print('grad: beta')
+        print(id_tag + 'grad: beta')
         est_grad = t_sum((weighted_mean(beta,
                                         loss_grad(speaker, speaker.model.l_out,
                                                   speaker.model.target_var))
@@ -202,7 +205,7 @@ class RSAGraphModel(SimpleLasagneModel):
         # These are still ordinary log-likelihood terms; the complexity comes from
         # identifying the right input variables and iterating over the m x n dyads.
         #   sum_k \nu_jk E_{G_S(\phi_k)} [-d/d\theta_j log L(c | m; \theta_j)]
-        print('grad: nu co-training')
+        print(id_tag + 'grad: nu co-training')
         est_grad = t_sum(
             (weighted_mean(
                 nu,
@@ -213,7 +216,7 @@ class RSAGraphModel(SimpleLasagneModel):
             est_grad,
             nested=True)
         #   sum_j \nu_jk E_{G_L(\theta_j)} [-d/d\phi_k log S(m | c; \phi_k)]
-        print('grad: mu co-training')
+        print(id_tag + 'grad: mu co-training')
         est_grad = t_sum(
             (weighted_mean(
                 mu,
@@ -229,7 +232,7 @@ class RSAGraphModel(SimpleLasagneModel):
         #   sum_k \mu_jk E_{G_L(\theta_j)}
         #     [(1 + log G_L(c, m; \theta_j) - log H_S(c, m; \phi_k)) *
         #      d/d\theta_j log L(c | m; \theta_j)]
-        print('grad: mu regularizer')
+        print(id_tag + 'grad: mu regularizer')
         est_grad = t_sum(
             (weighted_mean(
                 mu *
@@ -246,7 +249,7 @@ class RSAGraphModel(SimpleLasagneModel):
         #   sum_j \nu_jk E_{G_S(\phi_k)}
         #     [(1 + log G_S(c, m; \phi_k) - log H_L(c, m; \theta_j)) *
         #      d/d\phi_k log S(m | c; \phi_k)]
-        print('grad: nu regularizer')
+        print(id_tag + 'grad: nu regularizer')
         est_grad = t_sum(
             (weighted_mean(
                 nu *
@@ -271,10 +274,21 @@ class RSAGraphModel(SimpleLasagneModel):
     def minibatches(self, inputs, targets, batch_size, shuffle=False):
         options = config.options()
 
-        dataset = super(RSAGraphModel, self).minibatches(inputs, targets, batch_size,
+        agents = self.listeners + self.speakers
+        batches = super(RSAGraphModel, self).minibatches(inputs, targets, batch_size,
                                                          shuffle=shuffle)
-        for inputs_batch, targets_batch, _synth in dataset:
+        for dataset_inputs, dataset_targets, _synth in batches:
+            inputs_batch = []
+            targets_batch = []
             synth_batch = []
+
+            filtered = self.filter_arrays(dataset_inputs, dataset_targets)
+            for agent, (agent_inputs, agent_targets) in zip(agents, filtered):
+                inputs_batch.extend(agent_inputs)
+                targets_batch.extend(agent_targets)
+                input_types = [a.shape for a in agent_inputs]
+                target_types = [a.shape for a in agent_targets]
+                print('%s: %s -> %s' % (agent.id, input_types, target_types))
 
             listener_samples = [listener.sample_joint_emp(options.listener_samples)
                                 for listener in self.listeners]
@@ -282,20 +296,43 @@ class RSAGraphModel(SimpleLasagneModel):
                                for speaker in self.speakers]
 
             for listener, samples in zip(self.listeners, listener_samples):
-                synth_batch.extend(listener.model.data_to_synth_arrays(listener, samples,
-                                                                       speaker_samples))
+                arrays = listener.model.data_to_synth_arrays(listener, samples,
+                                                             speaker_samples)
+                synth_batch.extend(arrays)
+                synth_types = [a.shape for a in arrays]
+                print('%s synth: %s' % (listener.id, synth_types))
+                print arrays[1]
             for speaker, samples in zip(self.speakers, speaker_samples):
-                synth_batch.extend(speaker.model.data_to_synth_arrays(speaker, samples,
-                                                                      listener_samples))
+                arrays = speaker.model.data_to_synth_arrays(speaker, samples,
+                                                            listener_samples)
+                synth_batch.extend(arrays)
+                synth_types = [a.shape for a in arrays]
+                print('%s synth: %s' % (speaker.id, synth_types))
             yield inputs_batch, targets_batch, synth_batch
+
+    def filter_arrays(self, inputs, targets):
+        result = []
+        input_idx = 0
+        for agent, target in zip(self.listeners + self.speakers, targets):
+            assert input_idx + len(agent.model.input_vars) <= len(inputs), \
+                (input_idx, len(agent.model.input_vars), len(inputs))
+            agent_inputs = inputs[input_idx:input_idx + len(agent.model.input_vars)]
+            agent_targets = [target]
+            result.append((agent_inputs, agent_targets))
+            input_idx += len(agent.model.input_vars)
+        return result
 
 
 class RSALearner(NeuralLearner):
-    def __init__(self):
+    def __init__(self, id=None):
         options = config.options()
 
-        self.listeners = [ListenerLearner() for _ in range(options.rsa_listeners)]
-        self.speakers = [SpeakerLearner() for _ in range(options.rsa_speakers)]
+        self.id = id
+        id_tag = (id + '/') if id else ''
+        self.listeners = [ListenerLearner(id='%sL%d' % (id_tag, j))
+                          for j in range(options.rsa_listeners)]
+        self.speakers = [SpeakerLearner(id='%sS%d' % (id_tag, k))
+                         for k in range(options.rsa_speakers)]
 
         agents = self.listeners if options.listener else self.speakers
         self.eval_agent = agents[options.eval_agent]
@@ -309,7 +346,8 @@ class RSALearner(NeuralLearner):
     def predict_and_score(self, eval_instances):
         return self.eval_agent.predict_and_score(eval_instances)
 
-    def _data_to_arrays(self, training_instances, test=False, inverted=False):
+    def _data_to_arrays(self, training_instances,
+                        init_vectorizer=False, test=False, inverted=False):
         options = config.options()
 
         input_arrays = []
@@ -325,13 +363,15 @@ class RSALearner(NeuralLearner):
         for listener in self.listeners:
             if not test:
                 listener.dataset = listener_dataset
-            inputs, targets = listener._data_to_arrays(listener_dataset, test=test)
+            inputs, targets = listener._data_to_arrays(listener_dataset, test=test,
+                                                       init_vectorizer=init_vectorizer)
             input_arrays.extend(inputs)
             target_arrays.extend(targets)
         for speaker in self.speakers:
             if not test:
                 speaker.dataset = speaker_dataset
-            speaker._data_to_arrays(speaker_dataset, test=test)
+            inputs, targets = speaker._data_to_arrays(speaker_dataset, test=test,
+                                                      init_vectorizer=init_vectorizer)
             input_arrays.extend(inputs)
             target_arrays.extend(targets)
 
