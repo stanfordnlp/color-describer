@@ -381,14 +381,14 @@ class NeuralLearner(Learner):
         return input_insts
 
     def log_joint_smooth(self, input_vars, target_var):
+        l_out, loss = self._get_l_out(input_vars)
         return (self.log_prior_smooth(input_vars) -
-                self.model.loss(get_output(self._get_l_out(input_vars)),
-                                target_var))
+                loss(get_output(l_out), target_var))
 
     def log_joint_emp(self, input_vars, target_var):
+        l_out, loss = self._get_l_out(input_vars)
         return (self.log_prior_emp(input_vars) -
-                self.model.loss(get_output(self._get_l_out(input_vars)),
-                                target_var))
+                loss(get_output(l_out), target_var))
 
     def __getstate__(self):
         if not hasattr(self, 'model'):

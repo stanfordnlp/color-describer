@@ -28,7 +28,7 @@ class UniformPrior(object):
 
     def apply(self, input_vars):
         c, _, _ = input_vars
-        return -3.0 * np.log(256.0) * T.ones_like(c)
+        return -3.0 * np.log(256.0) * T.ones_like(c[:, 0])
 
 
 class SpeakerLearner(NeuralLearner):
@@ -162,9 +162,9 @@ class SpeakerLearner(NeuralLearner):
                       T.imatrix(id_tag + 'mask')]
         target_var = T.imatrix(id_tag + 'targets')
 
-        l_out = self._get_l_out(input_vars)
+        l_out, loss = self. _get_l_out(input_vars)
         self.model = model_class(input_vars, [target_var], l_out, id=self.id,
-                                 loss=crossentropy_categorical_1hot_nd, optimizer=rmsprop)
+                                 loss=loss, optimizer=rmsprop)
 
         self.prior_emp = UniformPrior()
         self.prior_smooth = UniformPrior()
@@ -200,8 +200,11 @@ class SpeakerLearner(NeuralLearner):
                                name=id_tag + 'reshape')
         l_softmax = NonlinearityLayer(l_shape, nonlinearity=softmax,
                                       name=id_tag + 'softmax')
-        return ReshapeLayer(l_softmax, (-1, self.seq_vec.max_len - 1, len(self.seq_vec.tokens)),
-                            name=id_tag + 'out')
+        l_out = ReshapeLayer(l_softmax, (-1, self.seq_vec.max_len - 1, len(self.seq_vec.tokens)),
+                             name=id_tag + 'out')
+
+        loss = masked_seq_crossentropy(mask_var)
+        return l_out, loss
 
 
 def sample(a, temperature=1.0):
@@ -236,5 +239,27 @@ def crossentropy_categorical_1hot_nd(coding_dist, true_idx):
     if coding_dist.ndim != true_idx.ndim + 1:
         raise ValueError('`coding_dist` must have one more dimension that `true_idx` '
                          '(got %s and %s)' % (coding_dist.type, true_idx.type))
-    return crossentropy_categorical_1hot(T.reshape(coding_dist, (-1, T.shape(coding_dist)[-1])),
-                                         true_idx.flatten())
+    coding_flattened = T.reshape(coding_dist, (-1, T.shape(coding_dist)[-1]))
+    scores_flattened = crossentropy_categorical_1hot(coding_flattened, true_idx.flatten())
+    return T.reshape(scores_flattened, true_idx.shape)
+
+
+def masked_seq_crossentropy(mask):
+    '''
+    Return a loss function for sequence models.
+
+    :param mask: a 2-D int tensor (num_examples x max_length) with 1 in valid token locations
+        and 0 in locations that should be masked out
+
+    The returned function will have the following parameters and return type:
+
+    :param coding_dist: a 3-D float tensor (num_examples x max_length x num_token_types)
+        of log probabilities assigned to each token
+    :param true_idx: a 2-D int tensor (num_examples x max_length) of true token indices
+    :return: a 1-D float tensor of per-example cross-entropy values
+    '''
+    def msxe_loss(coding_dist, true_idx):
+        mask_float = T.cast(mask, 'float32')
+        return (crossentropy_categorical_1hot_nd(coding_dist, true_idx) * mask_float).sum(axis=1)
+
+    return msxe_loss

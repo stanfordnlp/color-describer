@@ -44,7 +44,7 @@ class UnigramPrior(object):
         token_probs = self.log_probs[x]
         if self.mask_index is not None:
             token_probs = token_probs * T.cast((x == self.mask_index), 'float32')
-        return token_probs.sum()
+        return token_probs.sum(axis=1)
 
 
 class ListenerLearner(NeuralLearner):
@@ -137,10 +137,10 @@ class ListenerLearner(NeuralLearner):
         input_var = T.imatrix(id_tag + 'inputs')
         target_var = T.ivector(id_tag + 'targets')
 
-        l_out = self._get_l_out([input_var])
+        l_out, loss = self._get_l_out([input_var])
 
         self.model = model_class([input_var], [target_var], l_out,
-                                 loss=categorical_crossentropy, optimizer=rmsprop, id=self.id)
+                                 loss=loss, optimizer=rmsprop, id=self.id)
 
         self.prior_emp = UnigramPrior(vocab_size=len(self.seq_vec.tokens))
         self.prior_smooth = UnigramPrior(vocab_size=len(self.seq_vec.tokens))  # TODO: smoothing
@@ -170,4 +170,6 @@ class ListenerLearner(NeuralLearner):
         l_hidden_drop = DropoutLayer(l_hidden, p=0.2, name=id_tag + 'hidden_drop')
         l_scores = DenseLayer(l_hidden_drop, num_units=self.color_vec.num_types, nonlinearity=None,
                               name=id_tag + 'scores')
-        return NonlinearityLayer(l_scores, nonlinearity=softmax, name=id_tag + 'out')
+        l_out = NonlinearityLayer(l_scores, nonlinearity=softmax, name=id_tag + 'out')
+
+        return l_out, categorical_crossentropy

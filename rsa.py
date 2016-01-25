@@ -1,9 +1,9 @@
 import operator
+import theano.tensor as T
 from lasagne.layers import get_output
 from lasagne.updates import rmsprop
 
 from bt import config
-from jacobian import unsafe_jacobian as jacobian
 from neural import SimpleLasagneModel, NeuralLearner
 from speaker import SpeakerLearner
 from listener import ListenerLearner
@@ -137,40 +137,33 @@ class RSAGraphModel(SimpleLasagneModel):
     def get_est_loss(self):
         options = config.options()
 
-        def loss_out(agent, out, target_var):
-            pred = get_output(out)
-            return agent.model.loss(pred, target_var)
-
         def kl(agent_p, agent_q, other_idx):
-            return weighted_mean(
-                1.0,
+            return (
                 agent_p.log_joint_emp(agent_p.model.sample_inputs_self,
                                       agent_p.model.sample_target_self) -
                 agent_q.log_joint_smooth(agent_q.model.sample_inputs_others[other_idx],
                                          agent_q.model.sample_target_others[other_idx])
-            )
+            ).mean()
 
         id_tag = (self.id + ': ') if self.id else ''
         # \alpha * KL(dataset || L) = \alpha * log L(dataset) + C
         print(id_tag + 'loss: KL(dataset || L)')
-        est_loss = t_sum(weighted_mean(alpha, loss_out(listener, listener.model.l_out,
-                                                       listener.model.target_var))
+        est_loss = t_sum(alpha * loss_out(listener, listener.model.input_vars,
+                                          listener.model.target_var).mean()
                          for alpha, listener in zip(options.rsa_alpha, self.listeners))
         # \beta * KL(dataset || S) = \beta * log S(dataset) + C
         print(id_tag + 'loss: KL(dataset || S)')
-        est_loss += t_sum(weighted_mean(beta, loss_out(speaker, speaker.model.l_out,
-                                                       speaker.model.target_var))
+        est_loss += t_sum(beta * loss_out(speaker, speaker.model.input_vars,
+                                          speaker.model.target_var).mean()
                           for beta, speaker in zip(options.rsa_beta, self.speakers))
 
         # \mu * KL(L || S)
         print(id_tag + 'loss: KL(L || S)')
-        est_loss += t_sum(mu *
-                          kl(listener, speaker, k)
+        est_loss += t_sum(mu * kl(listener, speaker, k)
                           for mu, (listener, j, speaker, k) in zip(options.rsa_mu, self.dyads()))
         # \nu * KL(S || L)
         print(id_tag + 'loss: KL(S || L)')
-        est_loss += t_sum(nu *
-                          kl(speaker, listener, j)
+        est_loss += t_sum(nu * kl(speaker, listener, j)
                           for nu, (listener, j, speaker, k) in zip(options.rsa_nu, self.dyads()))
 
         return est_loss
@@ -178,25 +171,28 @@ class RSAGraphModel(SimpleLasagneModel):
     def get_est_grad(self, params):
         options = config.options()
 
-        def loss_grad(agent, out, target_var):
-            pred = get_output(out)
-            loss = agent.model.loss(pred, target_var)
-            return jacobian(loss, params, disconnected_inputs='ignore')
+        def mean_weighted_grad(weights, loss):
+            # Lop to the rescue! Here I was calling T.jacobian and trying to
+            # broadcast things and elementwise-multiply through the resulting lists,
+            # when a function already existed to do all of that for me...
+            return T.Lop(loss, params, weights / T.cast(weights.shape[0], 'float32'),
+                         disconnected_inputs='ignore')
+            # TODO: control variates?
 
         id_tag = (self.id + ': ') if self.id else ''
         # alpha and beta: train the agents directly against the dataset.
         #   \alpha_j E_D [-d/d\theta_j log L(c | m; \theta_j)]
         print(id_tag + 'grad: alpha')
-        est_grad = t_sum((weighted_mean(alpha,
-                                        loss_grad(listener, listener.model.l_out,
-                                                  listener.model.target_var))
+        est_grad = t_sum((mean_weighted_grad(T.constant(alpha),
+                                             loss_out(listener, listener.model.input_vars,
+                                                      listener.model.target_var))
                           for alpha, listener in zip(options.rsa_alpha, self.listeners)),
                          nested=True)
         #   \beta_k E_D [-d/d\phi_k log S(m | c; \phi_k)]
         print(id_tag + 'grad: beta')
-        est_grad = t_sum((weighted_mean(beta,
-                                        loss_grad(speaker, speaker.model.l_out,
-                                                  speaker.model.target_var))
+        est_grad = t_sum((mean_weighted_grad(T.constant(beta),
+                                             loss_out(speaker, speaker.model.input_vars,
+                                                      speaker.model.target_var))
                           for beta, speaker in zip(options.rsa_beta, self.speakers)),
                          est_grad,
                          nested=True)
@@ -207,22 +203,22 @@ class RSAGraphModel(SimpleLasagneModel):
         #   sum_k \nu_jk E_{G_S(\phi_k)} [-d/d\theta_j log L(c | m; \theta_j)]
         print(id_tag + 'grad: nu co-training')
         est_grad = t_sum(
-            (weighted_mean(
-                nu,
-                loss_grad(listener,
-                          listener._get_l_out(listener.model.sample_inputs_others[k]),
-                          listener.model.sample_target_others[k]))
+            (mean_weighted_grad(
+                T.constant(nu),
+                loss_out(listener,
+                         listener.model.sample_inputs_others[k],
+                         listener.model.sample_target_others[k]))
              for nu, (listener, j, speaker, k) in zip(options.rsa_nu, self.dyads())),
             est_grad,
             nested=True)
         #   sum_j \nu_jk E_{G_L(\theta_j)} [-d/d\phi_k log S(m | c; \phi_k)]
         print(id_tag + 'grad: mu co-training')
         est_grad = t_sum(
-            (weighted_mean(
-                mu,
-                loss_grad(speaker,
-                          speaker._get_l_out(speaker.model.sample_inputs_others[j]),
-                          speaker.model.sample_target_others[j]))
+            (mean_weighted_grad(
+                T.constant(mu),
+                loss_out(speaker,
+                         speaker.model.sample_inputs_others[j],
+                         speaker.model.sample_target_others[j]))
              for mu, (listener, j, speaker, k) in zip(options.rsa_mu, self.dyads())),
             est_grad,
             nested=True)
@@ -234,15 +230,15 @@ class RSAGraphModel(SimpleLasagneModel):
         #      d/d\theta_j log L(c | m; \theta_j)]
         print(id_tag + 'grad: mu regularizer')
         est_grad = t_sum(
-            (weighted_mean(
+            (mean_weighted_grad(
                 mu *
                 (1 + listener.log_joint_emp(listener.model.sample_inputs_self,
                                             listener.model.sample_target_self) -
                  speaker.log_joint_smooth(speaker.model.sample_inputs_others[j],
                                           speaker.model.sample_target_others[j])),
-                loss_grad(listener,
-                          listener._get_l_out(listener.model.sample_inputs_self),
-                          listener.model.sample_target_self))
+                loss_out(listener,
+                         listener.model.sample_inputs_self,
+                         listener.model.sample_target_self))
              for mu, (listener, j, speaker, k) in zip(options.rsa_mu, self.dyads())),
             est_grad,
             nested=True)
@@ -251,15 +247,15 @@ class RSAGraphModel(SimpleLasagneModel):
         #      d/d\phi_k log S(m | c; \phi_k)]
         print(id_tag + 'grad: nu regularizer')
         est_grad = t_sum(
-            (weighted_mean(
+            (mean_weighted_grad(
                 nu *
                 (1 + speaker.log_joint_emp(speaker.model.sample_inputs_self,
                                            speaker.model.sample_target_self) -
                  listener.log_joint_smooth(listener.model.sample_inputs_others[k],
                                            listener.model.sample_target_others[k])),
-                loss_grad(speaker,
-                          speaker._get_l_out(speaker.model.sample_inputs_self),
-                          speaker.model.sample_target_self))
+                loss_out(speaker,
+                         speaker.model.sample_inputs_self,
+                         speaker.model.sample_target_self))
              for nu, (listener, j, speaker, k) in zip(options.rsa_nu, self.dyads())),
             est_grad,
             nested=True)
@@ -394,7 +390,7 @@ def t_sum(seq, start=None, nested=False):
 
     >>> t_sum([1, 2, 3])
     6
-    >>> t_sum([1, 2, 3], start=4)
+    >>> t_sum(xrange(1, 4), start=4)
     10
     >>> t_sum([[1, 2], [3, 4], [5, 6]], nested=True)
     [9, 12]
@@ -402,6 +398,8 @@ def t_sum(seq, start=None, nested=False):
     [8, 10]
     '''
     if nested:
+        if not isinstance(seq, list):
+            seq = list(seq)
         if start:
             return [t_sum(subseq, start_elem) for subseq, start_elem in zip(zip(*seq), start)]
         else:
@@ -419,9 +417,7 @@ def t_sum(seq, start=None, nested=False):
         return 0
 
 
-def weighted_mean(weights, vals):
-    # TODO: control variates?
-    if isinstance(vals, list):
-        return [(weights * v).mean() for v in vals]
-    else:
-        return (weights * vals).mean()
+def loss_out(agent, input_vars, target_var):
+    l_out, loss = agent._get_l_out(input_vars)
+    pred = get_output(l_out)
+    return loss(pred, target_var)
