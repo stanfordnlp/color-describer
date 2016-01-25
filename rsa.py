@@ -1,6 +1,5 @@
 import operator
 import theano.tensor as T
-from lasagne.layers import get_output
 from lasagne.updates import rmsprop
 
 from bt import config
@@ -148,13 +147,11 @@ class RSAGraphModel(SimpleLasagneModel):
         id_tag = (self.id + ': ') if self.id else ''
         # \alpha * KL(dataset || L) = \alpha * log L(dataset) + C
         print(id_tag + 'loss: KL(dataset || L)')
-        est_loss = t_sum(alpha * loss_out(listener, listener.model.input_vars,
-                                          listener.model.target_var).mean()
+        est_loss = t_sum(alpha * listener.loss_out().mean()
                          for alpha, listener in zip(options.rsa_alpha, self.listeners))
         # \beta * KL(dataset || S) = \beta * log S(dataset) + C
         print(id_tag + 'loss: KL(dataset || S)')
-        est_loss += t_sum(beta * loss_out(speaker, speaker.model.input_vars,
-                                          speaker.model.target_var).mean()
+        est_loss += t_sum(beta * speaker.loss_out().mean()
                           for beta, speaker in zip(options.rsa_beta, self.speakers))
 
         # \mu * KL(L || S)
@@ -179,20 +176,19 @@ class RSAGraphModel(SimpleLasagneModel):
                          disconnected_inputs='ignore')
             # TODO: control variates?
 
+        def mean_grad(loss):
+            return T.grad(loss.mean(), params, disconnected_inputs='ignore')
+
         id_tag = (self.id + ': ') if self.id else ''
         # alpha and beta: train the agents directly against the dataset.
         #   \alpha_j E_D [-d/d\theta_j log L(c | m; \theta_j)]
         print(id_tag + 'grad: alpha')
-        est_grad = t_sum((mean_weighted_grad(T.constant(alpha),
-                                             loss_out(listener, listener.model.input_vars,
-                                                      listener.model.target_var))
+        est_grad = t_sum((mean_grad(alpha * listener.loss_out())
                           for alpha, listener in zip(options.rsa_alpha, self.listeners)),
                          nested=True)
         #   \beta_k E_D [-d/d\phi_k log S(m | c; \phi_k)]
         print(id_tag + 'grad: beta')
-        est_grad = t_sum((mean_weighted_grad(T.constant(beta),
-                                             loss_out(speaker, speaker.model.input_vars,
-                                                      speaker.model.target_var))
+        est_grad = t_sum((mean_grad(beta * speaker.loss_out())
                           for beta, speaker in zip(options.rsa_beta, self.speakers)),
                          est_grad,
                          nested=True)
@@ -203,22 +199,16 @@ class RSAGraphModel(SimpleLasagneModel):
         #   sum_k \nu_jk E_{G_S(\phi_k)} [-d/d\theta_j log L(c | m; \theta_j)]
         print(id_tag + 'grad: nu co-training')
         est_grad = t_sum(
-            (mean_weighted_grad(
-                T.constant(nu),
-                loss_out(listener,
-                         listener.model.sample_inputs_others[k],
-                         listener.model.sample_target_others[k]))
+            (mean_grad(nu * listener.loss_out(listener.model.sample_inputs_others[k],
+                                              listener.model.sample_target_others[k]))
              for nu, (listener, j, speaker, k) in zip(options.rsa_nu, self.dyads())),
             est_grad,
             nested=True)
         #   sum_j \nu_jk E_{G_L(\theta_j)} [-d/d\phi_k log S(m | c; \phi_k)]
         print(id_tag + 'grad: mu co-training')
         est_grad = t_sum(
-            (mean_weighted_grad(
-                T.constant(mu),
-                loss_out(speaker,
-                         speaker.model.sample_inputs_others[j],
-                         speaker.model.sample_target_others[j]))
+            (mean_grad(mu * speaker.loss_out(speaker.model.sample_inputs_others[j],
+                                             speaker.model.sample_target_others[j]))
              for mu, (listener, j, speaker, k) in zip(options.rsa_mu, self.dyads())),
             est_grad,
             nested=True)
@@ -236,9 +226,8 @@ class RSAGraphModel(SimpleLasagneModel):
                                             listener.model.sample_target_self) -
                  speaker.log_joint_smooth(speaker.model.sample_inputs_others[j],
                                           speaker.model.sample_target_others[j])),
-                loss_out(listener,
-                         listener.model.sample_inputs_self,
-                         listener.model.sample_target_self))
+                listener.loss_out(listener.model.sample_inputs_self,
+                                  listener.model.sample_target_self))
              for mu, (listener, j, speaker, k) in zip(options.rsa_mu, self.dyads())),
             est_grad,
             nested=True)
@@ -253,9 +242,8 @@ class RSAGraphModel(SimpleLasagneModel):
                                            speaker.model.sample_target_self) -
                  listener.log_joint_smooth(listener.model.sample_inputs_others[k],
                                            listener.model.sample_target_others[k])),
-                loss_out(speaker,
-                         speaker.model.sample_inputs_self,
-                         speaker.model.sample_target_self))
+                speaker.loss_out(speaker.model.sample_inputs_self,
+                                 speaker.model.sample_target_self))
              for nu, (listener, j, speaker, k) in zip(options.rsa_nu, self.dyads())),
             est_grad,
             nested=True)
@@ -323,7 +311,6 @@ class RSALearner(NeuralLearner):
     def __init__(self, id=None):
         options = config.options()
 
-        self.id = id
         id_tag = (id + '/') if id else ''
         self.listeners = [ListenerLearner(id='%sL%d' % (id_tag, j))
                           for j in range(options.rsa_listeners)]
@@ -332,6 +319,11 @@ class RSALearner(NeuralLearner):
 
         agents = self.listeners if options.listener else self.speakers
         self.eval_agent = agents[options.eval_agent]
+
+        color_resolution = (options.listener_color_resolution
+                            if options.listener else
+                            options.speaker_color_resolution)
+        super(RSALearner, self).__init__(color_resolution=color_resolution, id=id)
 
     def predict(self, eval_instances):
         return self.eval_agent.predict(eval_instances)
@@ -415,9 +407,3 @@ def t_sum(seq, start=None, nested=False):
         return start
     else:
         return 0
-
-
-def loss_out(agent, input_vars, target_var):
-    l_out, loss = agent._get_l_out(input_vars)
-    pred = get_output(l_out)
-    return loss(pred, target_var)

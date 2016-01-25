@@ -137,10 +137,11 @@ class ListenerLearner(NeuralLearner):
         input_var = T.imatrix(id_tag + 'inputs')
         target_var = T.ivector(id_tag + 'targets')
 
-        l_out, loss = self._get_l_out([input_var])
+        self.l_out, self.input_layers = self._get_l_out([input_var])
+        self.loss = categorical_crossentropy
 
-        self.model = model_class([input_var], [target_var], l_out,
-                                 loss=loss, optimizer=rmsprop, id=self.id)
+        self.model = model_class([input_var], [target_var], self.l_out,
+                                 loss=self.loss, optimizer=rmsprop, id=self.id)
 
         self.prior_emp = UnigramPrior(vocab_size=len(self.seq_vec.tokens))
         self.prior_smooth = UnigramPrior(vocab_size=len(self.seq_vec.tokens))  # TODO: smoothing
@@ -172,4 +173,4 @@ class ListenerLearner(NeuralLearner):
                               name=id_tag + 'scores')
         l_out = NonlinearityLayer(l_scores, nonlinearity=softmax, name=id_tag + 'out')
 
-        return l_out, categorical_crossentropy
+        return l_out, [l_in]

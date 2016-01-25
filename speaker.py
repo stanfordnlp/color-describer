@@ -3,7 +3,7 @@ import numpy as np
 import theano.tensor as T
 from theano.tensor.nnet import crossentropy_categorical_1hot
 from lasagne.layers import InputLayer, DropoutLayer, EmbeddingLayer, NonlinearityLayer
-from lasagne.layers import ConcatLayer, ReshapeLayer
+from lasagne.layers import ConcatLayer, ReshapeLayer, get_output
 from lasagne.layers.recurrent import LSTMLayer, Gate
 from lasagne.init import Constant
 from lasagne.nonlinearities import softmax
@@ -162,9 +162,9 @@ class SpeakerLearner(NeuralLearner):
                       T.imatrix(id_tag + 'mask')]
         target_var = T.imatrix(id_tag + 'targets')
 
-        l_out, loss = self. _get_l_out(input_vars)
-        self.model = model_class(input_vars, [target_var], l_out, id=self.id,
-                                 loss=loss, optimizer=rmsprop)
+        self.l_out, self.input_layers = self. _get_l_out(input_vars)
+        self.model = model_class(input_vars, [target_var], self.l_out, id=self.id,
+                                 loss=self.masked_loss(input_vars), optimizer=rmsprop)
 
         self.prior_emp = UniformPrior()
         self.prior_smooth = UniformPrior()
@@ -203,8 +203,19 @@ class SpeakerLearner(NeuralLearner):
         l_out = ReshapeLayer(l_softmax, (-1, self.seq_vec.max_len - 1, len(self.seq_vec.tokens)),
                              name=id_tag + 'out')
 
-        loss = masked_seq_crossentropy(mask_var)
-        return l_out, loss
+        return l_out, [l_color, l_prev_out, l_mask_in]
+
+    def loss_out(self, input_vars=None, target_var=None):
+        if input_vars is None:
+            input_vars = self.model.input_vars
+        if target_var is None:
+            target_var = self.model.target_var
+        pred = get_output(self.l_out, dict(zip(self.input_layers, input_vars)))
+        loss = self.masked_loss(input_vars)
+        return loss(pred, target_var)
+
+    def masked_loss(self, input_vars):
+        return masked_seq_crossentropy(input_vars[-1])
 
 
 def sample(a, temperature=1.0):
