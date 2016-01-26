@@ -92,7 +92,7 @@ class SpeakerLearner(NeuralLearner):
             progress.progress(batch_num)
             batch = list(batch)
 
-            xs, (n,) = self._data_to_arrays(batch, test=True)
+            xs, (n,) = self._data_to_arrays(batch, test=False)
             _, _, mask = xs
 
             probs = self.model.predict(xs)
