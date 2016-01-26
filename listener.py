@@ -54,7 +54,7 @@ class ListenerLearner(NeuralLearner):
         self.word_counts = Counter()
         super(ListenerLearner, self).__init__(options.listener_color_resolution, id=id)
 
-    def predict_and_score(self, eval_instances, random=False):
+    def predict_and_score(self, eval_instances, random=False, verbosity=0):
         options = config.options()
 
         predictions = []
@@ -62,7 +62,8 @@ class ListenerLearner(NeuralLearner):
         batches = iterators.iter_batches(eval_instances, options.listener_eval_batch_size)
         num_batches = (len(eval_instances) - 1) // options.listener_eval_batch_size + 1
 
-        print('Testing')
+        if options.verbosity + verbosity >= 2:
+            print('Testing')
         progress.start_task('Eval batch', num_batches)
         for batch_num, batch in enumerate(batches):
             progress.progress(batch_num)
@@ -93,6 +94,8 @@ class ListenerLearner(NeuralLearner):
 
     def _data_to_arrays(self, training_instances,
                         init_vectorizer=False, test=False, inverted=False):
+        options = config.options()
+
         get_i, get_o = (lambda inst: inst.input), (lambda inst: inst.output)
         get_desc, get_color = (get_o, get_i) if inverted else (get_i, get_o)
 
@@ -115,7 +118,8 @@ class ListenerLearner(NeuralLearner):
             color = tuple(min(d * 256, 255) for d in color_0_1)
             s = ['<s>'] * (self.seq_vec.max_len - 1 - len(desc)) + desc
             s.append('</s>')
-            # print('%s -> %s' % (repr(s), repr(color)))
+            if options.verbosity >= 9:
+                print('%s -> %s' % (repr(s), repr(color)))
             sentences.append(s)
             colors.append(color)
 
@@ -126,9 +130,6 @@ class ListenerLearner(NeuralLearner):
             y[i] = self.color_vec.vectorize(colors[i])
 
         return [x], [y]
-
-    def sample(self, inputs):
-        return self.predict_and_score(inputs, random=True)[0]
 
     def _build_model(self, model_class=SimpleLasagneModel):
         id_tag = (self.id + '/') if self.id else ''

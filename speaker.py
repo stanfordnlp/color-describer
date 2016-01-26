@@ -40,14 +40,15 @@ class SpeakerLearner(NeuralLearner):
         options = config.options()
         super(SpeakerLearner, self).__init__(options.speaker_color_resolution, id=id)
 
-    def predict(self, eval_instances, random=False):
+    def predict(self, eval_instances, random=False, verbosity=0):
         options = config.options()
 
         result = []
         batches = iterators.iter_batches(eval_instances, options.speaker_eval_batch_size)
         num_batches = (len(eval_instances) - 1) // options.speaker_eval_batch_size + 1
 
-        print('Predicting')
+        if options.verbosity + verbosity >= 2:
+            print('Predicting')
         progress.start_task('Predict batch', num_batches)
         for batch_num, batch in enumerate(batches):
             progress.progress(batch_num)
@@ -79,14 +80,15 @@ class SpeakerLearner(NeuralLearner):
 
         return result
 
-    def score(self, eval_instances):
+    def score(self, eval_instances, verbosity=0):
         options = config.options()
 
         result = []
         batches = iterators.iter_batches(eval_instances, options.speaker_eval_batch_size)
         num_batches = (len(eval_instances) - 1) // options.speaker_eval_batch_size + 1
 
-        print('Scoring')
+        if options.verbosity + verbosity >= 2:
+            print('Scoring')
         progress.start_task('Score batch', num_batches)
         for batch_num, batch in enumerate(batches):
             progress.progress(batch_num)
@@ -105,11 +107,10 @@ class SpeakerLearner(NeuralLearner):
 
         return result
 
-    def sample(self, inputs):
-        return self.predict(inputs, random=True)
-
     def _data_to_arrays(self, training_instances,
                         init_vectorizer=False, test=False, inverted=False):
+        options = config.options()
+
         get_i, get_o = (lambda inst: inst.input), (lambda inst: inst.output)
         get_color, get_desc = (get_o, get_i) if inverted else (get_i, get_o)
 
@@ -132,7 +133,8 @@ class SpeakerLearner(NeuralLearner):
                         ['<MASK>'] * (self.seq_vec.max_len - 2 - len(desc)))
             prev = full[:-1]
             next = full[1:]
-            # print('%s, %s -> %s' % (repr(color), repr(prev), repr(next)))
+            if options.verbosity >= 9:
+                print('%s, %s -> %s' % (repr(color), repr(prev), repr(next)))
             colors.append(color)
             previous.append(prev)
             next_tokens.append(next)

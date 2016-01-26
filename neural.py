@@ -21,6 +21,13 @@ parser.add_argument('--batch_size', type=int, default=128,
                     help='Number of examples per minibatch for training and evaluation')
 parser.add_argument('--detect_nans', action='store_true',
                     help='If True, throw an error if a non-finite value is detected.')
+parser.add_argument('--verbosity', type=int, default=4,
+                    help='Amount of diagnostic output to produce. 0-1: only progress updates; '
+                         '2-3: plus major experiment steps; '
+                         '4-5: plus compilation and graph assembly steps; '
+                         '6-7: plus parameter names for each function compilation; '
+                         '8: plus shapes and types for each compiled function call; '
+                         '9-10: plus vectorization of all datasets')
 
 
 rng = get_rng()
@@ -232,16 +239,21 @@ class SimpleLasagneModel(object):
             mode = MonitorMode(post_func=detect_nan)
         else:
             mode = None
-        print(id_tag_log + 'Compiling training function')
+
+        if options.verbosity >= 2:
+            print(id_tag_log + 'Compiling training function')
         params = input_vars + target_vars + synth_vars
-        print('params = %s' % (params,))
+        if options.verbosity >= 6:
+            print('params = %s' % (params,))
         self.train_fn = theano.function(params,
                                         train_loss, updates=updates, mode=mode,
                                         name=id_tag + 'train', on_unused_input='warn')
 
         test_prediction = get_output(l_out, deterministic=True)
-        print(id_tag_log + 'Compiling prediction function')
-        print('params = %s' % (input_vars,))
+        if options.verbosity >= 2:
+            print(id_tag_log + 'Compiling prediction function')
+        if options.verbosity >= 6:
+            print('params = %s' % (input_vars,))
         self.predict_fn = theano.function(input_vars, test_prediction, mode=mode,
                                           name=id_tag + 'predict', on_unused_input='ignore')
 
@@ -255,6 +267,8 @@ class SimpleLasagneModel(object):
         return mean_loss, T.grad(mean_loss, params), []
 
     def fit(self, Xs, ys, batch_size, num_epochs):
+        options = config.options()
+
         if not isinstance(Xs, Sequence):
             raise ValueError('Xs should be a sequence, instead got %s' % (Xs,))
         if not isinstance(ys, Sequence):
@@ -270,8 +284,9 @@ class SimpleLasagneModel(object):
             progress.start_task('Minibatch', num_minibatches_approx)
             for i, batch in enumerate(self.minibatches(Xs, ys, batch_size, shuffle=True)):
                 progress.progress(i)
-                print('types: %s' % ([type(v) for t in batch for v in t],))
-                print('shapes: %s' % ([v.shape for t in batch for v in t],))
+                if options.verbosity >= 8:
+                    print('types: %s' % ([type(v) for t in batch for v in t],))
+                    print('shapes: %s' % ([v.shape for t in batch for v in t],))
                 inputs, targets, synth = batch
                 loss_epoch.append(self.train_fn(*inputs + targets + synth))
             progress.end_task()
@@ -282,10 +297,13 @@ class SimpleLasagneModel(object):
         return np.array(loss_history)
 
     def predict(self, Xs):
+        options = config.options()
+
         if not isinstance(Xs, Sequence):
             raise ValueError('Xs should be a sequence, instead got %s' % (Xs,))
         id_tag_log = (self.id + ': ') if self.id else ''
-        print(id_tag_log + 'predict shapes: %s' % [x.shape for x in Xs])
+        if options.verbosity >= 8:
+            print(id_tag_log + 'predict shapes: %s' % [x.shape for x in Xs])
         return self.predict_fn(*Xs)
 
     def minibatches(self, inputs, targets, batch_size, shuffle=False):
@@ -329,11 +347,13 @@ class NeuralLearner(Learner):
         self._build_model()
 
         id_tag = (self.id + ': ') if self.id else ''
-        print(id_tag + 'Training priors')
+        if options.verbosity >= 2:
+            print(id_tag + 'Training priors')
         self.prior_emp.fit(xs, ys)
         self.prior_smooth.fit(xs, ys)
 
-        print(id_tag + 'Training conditional model')
+        if options.verbosity >= 2:
+            print(id_tag + 'Training conditional model')
         summary_path = config.get_file_path('losses.tfevents')
         if summary_path:
             writer = summary.SummaryWriter(summary_path)
@@ -367,7 +387,7 @@ class NeuralLearner(Learner):
         return self.prior_smooth.apply(input_vars)
 
     def sample(self, inputs):
-        raise NotImplementedError
+        return self.predict(inputs, random=True, verbosity=-6)
 
     def sample_prior_emp(self, num_samples):
         indices = rng.randint(len(self.dataset), size=num_samples)

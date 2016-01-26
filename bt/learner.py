@@ -19,7 +19,7 @@ class Learner(object):
         '''
         raise NotImplementedError
 
-    def predict(self, eval_instances):
+    def predict(self, eval_instances, random=False, verbosity=0):
         '''
         Return most likely predictions for each testing instance in
         `eval_instances`.
@@ -28,6 +28,12 @@ class Learner(object):
             Instances should have at least the `input` field populated.
             The `output` field need not be populated; subclasses should
             ignore it if it is present.
+        :param random: If `True`, sample from the probability distribution
+            defined by the classifier rather than output the most likely
+            prediction.
+        :param verbosity: The level of diagnostic output, relative to the
+            global --verbosity option. Used to adjust output when models
+            are composed of multiple sub-models.
         :type eval_instances: list(instance.Instance)
 
         :returns: list(output_type)
@@ -36,9 +42,9 @@ class Learner(object):
             raise NotImplementedError
 
         self._using_default_separate = True
-        return self.predict_and_score(eval_instances)[0]
+        return self.predict_and_score(eval_instances, random=random, verbosity=verbosity)[0]
 
-    def score(self, eval_instances):
+    def score(self, eval_instances, verbosity=0):
         '''
         Return scores (negative log likelihoods) assigned to each testing
         instance in `eval_instances`.
@@ -47,6 +53,9 @@ class Learner(object):
             Instances should have at least the `input` and `output` fields
             populated. `output` is needed to define which score is to
             be returned.
+        :param verbosity: The level of diagnostic output, relative to the
+            global --verbosity option. Used to adjust output when models
+            are composed of multiple sub-models.
         :type eval_instances: list(instance.Instance)
 
         :returns: list(float)
@@ -55,9 +64,9 @@ class Learner(object):
             raise NotImplementedError
 
         self._using_default_separate = True
-        return self.predict_and_score(eval_instances)[1]
+        return self.predict_and_score(eval_instances, verbosity=verbosity)[1]
 
-    def predict_and_score(self, eval_instances):
+    def predict_and_score(self, eval_instances, random=False, verbosity=0):
         '''
         Return most likely outputs and scores for the particular set of
         outputs given in `eval_instances`, as a tuple. Return value should
@@ -73,6 +82,12 @@ class Learner(object):
             Instances should have at least the `input` and `output` fields
             populated. `output` is needed to define which score is to
             be returned.
+        :param random: If `True`, sample from the probability distribution
+            defined by the classifier rather than output the most likely
+            prediction.
+        :param verbosity: The level of diagnostic output, relative to the
+            global --verbosity option. Used to adjust output when models
+            are composed of multiple sub-models.
         :type eval_instances: list(instance.Instance)
 
         :returns: tuple(list(output_type), list(float))
@@ -81,7 +96,8 @@ class Learner(object):
             raise NotImplementedError
 
         self._using_default_combined = True
-        return (self.predict(eval_instances), self.score(eval_instances))
+        return (self.predict(eval_instances, random=random, verbosity=verbosity),
+                self.score(eval_instances, verbosity=verbosity))
 
     def dump(self, outfile):
         '''

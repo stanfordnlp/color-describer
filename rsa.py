@@ -146,20 +146,24 @@ class RSAGraphModel(SimpleLasagneModel):
 
         id_tag = (self.id + ': ') if self.id else ''
         # \alpha * KL(dataset || L) = \alpha * log L(dataset) + C
-        print(id_tag + 'loss: KL(dataset || L)')
+        if options.verbosity >= 4:
+            print(id_tag + 'loss: KL(dataset || L)')
         est_loss = t_sum(alpha * listener.loss_out().mean()
                          for alpha, listener in zip(options.rsa_alpha, self.listeners))
         # \beta * KL(dataset || S) = \beta * log S(dataset) + C
-        print(id_tag + 'loss: KL(dataset || S)')
+        if options.verbosity >= 4:
+            print(id_tag + 'loss: KL(dataset || S)')
         est_loss += t_sum(beta * speaker.loss_out().mean()
                           for beta, speaker in zip(options.rsa_beta, self.speakers))
 
         # \mu * KL(L || S)
-        print(id_tag + 'loss: KL(L || S)')
+        if options.verbosity >= 4:
+            print(id_tag + 'loss: KL(L || S)')
         est_loss += t_sum(mu * kl(listener, speaker, k)
                           for mu, (listener, j, speaker, k) in zip(options.rsa_mu, self.dyads()))
         # \nu * KL(S || L)
-        print(id_tag + 'loss: KL(S || L)')
+        if options.verbosity >= 4:
+            print(id_tag + 'loss: KL(S || L)')
         est_loss += t_sum(nu * kl(speaker, listener, j)
                           for nu, (listener, j, speaker, k) in zip(options.rsa_nu, self.dyads()))
 
@@ -182,12 +186,14 @@ class RSAGraphModel(SimpleLasagneModel):
         id_tag = (self.id + ': ') if self.id else ''
         # alpha and beta: train the agents directly against the dataset.
         #   \alpha_j E_D [-d/d\theta_j log L(c | m; \theta_j)]
-        print(id_tag + 'grad: alpha')
+        if options.verbosity >= 4:
+            print(id_tag + 'grad: alpha')
         est_grad = t_sum((mean_grad(alpha * listener.loss_out())
                           for alpha, listener in zip(options.rsa_alpha, self.listeners)),
                          nested=True)
         #   \beta_k E_D [-d/d\phi_k log S(m | c; \phi_k)]
-        print(id_tag + 'grad: beta')
+        if options.verbosity >= 4:
+            print(id_tag + 'grad: beta')
         est_grad = t_sum((mean_grad(beta * speaker.loss_out())
                           for beta, speaker in zip(options.rsa_beta, self.speakers)),
                          est_grad,
@@ -197,7 +203,8 @@ class RSAGraphModel(SimpleLasagneModel):
         # These are still ordinary log-likelihood terms; the complexity comes from
         # identifying the right input variables and iterating over the m x n dyads.
         #   sum_k \nu_jk E_{G_S(\phi_k)} [-d/d\theta_j log L(c | m; \theta_j)]
-        print(id_tag + 'grad: nu co-training')
+        if options.verbosity >= 4:
+            print(id_tag + 'grad: nu co-training')
         est_grad = t_sum(
             (mean_grad(nu * listener.loss_out(listener.model.sample_inputs_others[k],
                                               listener.model.sample_target_others[k]))
@@ -205,7 +212,8 @@ class RSAGraphModel(SimpleLasagneModel):
             est_grad,
             nested=True)
         #   sum_j \nu_jk E_{G_L(\theta_j)} [-d/d\phi_k log S(m | c; \phi_k)]
-        print(id_tag + 'grad: mu co-training')
+        if options.verbosity >= 4:
+            print(id_tag + 'grad: mu co-training')
         est_grad = t_sum(
             (mean_grad(mu * speaker.loss_out(speaker.model.sample_inputs_others[j],
                                              speaker.model.sample_target_others[j]))
@@ -218,7 +226,8 @@ class RSAGraphModel(SimpleLasagneModel):
         #   sum_k \mu_jk E_{G_L(\theta_j)}
         #     [(1 + log G_L(c, m; \theta_j) - log H_S(c, m; \phi_k)) *
         #      d/d\theta_j log L(c | m; \theta_j)]
-        print(id_tag + 'grad: mu regularizer')
+        if options.verbosity >= 4:
+            print(id_tag + 'grad: mu regularizer')
         est_grad = t_sum(
             (mean_weighted_grad(
                 mu *
@@ -234,7 +243,8 @@ class RSAGraphModel(SimpleLasagneModel):
         #   sum_j \nu_jk E_{G_S(\phi_k)}
         #     [(1 + log G_S(c, m; \phi_k) - log H_L(c, m; \theta_j)) *
         #      d/d\phi_k log S(m | c; \phi_k)]
-        print(id_tag + 'grad: nu regularizer')
+        if options.verbosity >= 4:
+            print(id_tag + 'grad: nu regularizer')
         est_grad = t_sum(
             (mean_weighted_grad(
                 nu *
@@ -272,7 +282,8 @@ class RSAGraphModel(SimpleLasagneModel):
                 targets_batch.extend(agent_targets)
                 input_types = [a.shape for a in agent_inputs]
                 target_types = [a.shape for a in agent_targets]
-                print('%s: %s -> %s' % (agent.id, input_types, target_types))
+                if options.verbosity >= 8:
+                    print('%s: %s -> %s' % (agent.id, input_types, target_types))
 
             listener_samples = [listener.sample_joint_emp(options.listener_samples)
                                 for listener in self.listeners]
@@ -284,14 +295,15 @@ class RSAGraphModel(SimpleLasagneModel):
                                                              speaker_samples)
                 synth_batch.extend(arrays)
                 synth_types = [a.shape for a in arrays]
-                print('%s synth: %s' % (listener.id, synth_types))
-                print arrays[1]
+                if options.verbosity >= 8:
+                    print('%s synth: %s' % (listener.id, synth_types))
             for speaker, samples in zip(self.speakers, speaker_samples):
                 arrays = speaker.model.data_to_synth_arrays(speaker, samples,
                                                             listener_samples)
                 synth_batch.extend(arrays)
                 synth_types = [a.shape for a in arrays]
-                print('%s synth: %s' % (speaker.id, synth_types))
+                if options.verbosity >= 8:
+                    print('%s synth: %s' % (speaker.id, synth_types))
             yield inputs_batch, targets_batch, synth_batch
 
     def filter_arrays(self, inputs, targets):
