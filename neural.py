@@ -31,7 +31,7 @@ def detect_nan(i, node, fn):
     if not isinstance(node.op, T.AllocEmpty):
         for output in fn.outputs:
             if (not isinstance(output[0], np.random.RandomState) and
-                    np.isnan(output[0]).any()):
+                    not np.isfinite(output[0]).all()):
                 print('*** NaN detected ***')
                 theano.printing.debugprint(node)
                 print('Inputs : %s' % [input[0] for input in fn.inputs])

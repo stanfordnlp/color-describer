@@ -22,24 +22,22 @@ parser.add_argument('--listener_eval_batch_size', type=int, default=65536)
 
 class UnigramPrior(object):
     def __init__(self, vocab_size, mask_index=None):
-        self.counts = np.zeros((vocab_size,), dtype=np.int32)
-        self.total = 0
+        self.vocab_size = vocab_size
+        self.counts = theano.shared(np.zeros((vocab_size,), dtype=np.int32))
+        self.total = theano.shared(np.array(0, dtype=np.int32))
         self.mask_index = mask_index
-        self.log_probs = None
+        self.log_probs = T.cast(self.counts, 'float32') / T.cast(self.total, 'float32')
 
     def fit(self, xs, ys):
         (x,) = xs
-        counts = np.bincount(x.flatten(), minlength=self.counts.shape[0])
+        counts = np.bincount(x.flatten(), minlength=self.vocab_size).astype(np.int32)
         if self.mask_index is not None:
             counts[self.mask_index] = 0
-        self.counts += counts
-        self.total += np.sum(counts)
-        self.log_probs = None
+        self.counts.set_value(self.counts.get_value() + counts)
+        self.total.set_value(self.total.get_value() + np.sum(counts))
 
     def apply(self, input_vars):
         (x,) = input_vars
-        if self.log_probs is None:
-            self.log_probs = theano.shared(np.log(self.counts / self.total).astype(np.float32))
 
         token_probs = self.log_probs[x]
         if self.mask_index is not None:
