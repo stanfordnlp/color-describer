@@ -47,7 +47,68 @@ def detect_nan(i, node, fn):
                 raise AssertionError
 
 
+class SymbolVectorizer(object):
+    '''
+    Maps symbols from an alphabet/vocabulary of indefinite size to and from
+    sequential integer ids.
+
+    >>> vec = SymbolVectorizer()
+    >>> vec.add_all(['larry', 'moe', 'larry', 'curly', 'moe'])
+    >>> vec.vectorize_all(['curly', 'larry', 'moe', 'pikachu'])
+    array([3, 1, 2, 0], dtype=int32)
+    >>> vec.unvectorize_all([3, 3, 2])
+    ['curly', 'curly', 'moe']
+    '''
+    def __init__(self):
+        self.tokens = []
+        self.token_indices = {}
+        self.indices_token = {}
+        self.add('<unk>')
+
+    @property
+    def num_types(self):
+        return len(self.tokens)
+
+    def add_all(self, symbols):
+        for sym in symbols:
+            self.add(sym)
+
+    def add(self, symbol):
+        if symbol not in self.token_indices:
+            self.token_indices[symbol] = len(self.tokens)
+            self.indices_token[len(self.tokens)] = symbol
+            self.tokens.append(symbol)
+
+    def vectorize(self, symbol):
+        return (self.token_indices[symbol] if symbol in self.token_indices
+                else self.token_indices['<unk>'])
+
+    def vectorize_all(self, symbols):
+        return np.array([self.vectorize(sym) for sym in symbols], dtype=np.int32)
+
+    def unvectorize(self, index):
+        return self.indices_token[index]
+
+    def unvectorize_all(self, array):
+        if hasattr(array, 'tolist'):
+            array = array.tolist()
+        return [self.unvectorize(elem) for elem in array]
+
+
 class SequenceVectorizer(object):
+    '''
+    Maps sequences of symbols from an alphabet/vocabulary of indefinite size
+    to and from sequential integer ids.
+
+    >>> vec = SequenceVectorizer()
+    >>> vec.add_all([['the', 'flat', 'cat', '</s>', '</s>'], ['the', 'cat', 'in', 'the', 'hat']])
+    >>> vec.vectorize_all([['in', 'the', 'cat', 'flat', '</s>'],
+    ...                    ['the', 'cat', 'sat', '</s>', '</s>']])
+    array([[5, 1, 3, 2, 4],
+           [1, 3, 0, 4, 4]], dtype=int32)
+    >>> vec.unvectorize_all([[1, 3, 0, 5, 1], [1, 2, 3, 6, 4]])
+    [['the', 'cat', '<unk>', 'in', 'the'], ['the', 'flat', 'cat', 'hat', '</s>']]
+    '''
     def __init__(self):
         self.tokens = []
         self.token_indices = {}

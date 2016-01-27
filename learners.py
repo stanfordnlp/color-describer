@@ -4,7 +4,7 @@ import numpy as np
 from bt.learner import Learner
 from bt import progress
 from listener import ListenerLearner
-from speaker import SpeakerLearner
+from speaker import SpeakerLearner, AtomicSpeakerLearner
 from rsa import RSALearner
 
 
@@ -214,6 +214,7 @@ LEARNERS = {
     'Histogram': HistogramLearner,
     'Listener': ListenerLearner,
     'Speaker': SpeakerLearner,
+    'AtomicSpeaker': AtomicSpeakerLearner,
     'RSA': RSALearner,
     'MostCommon': MostCommonSpeakerLearner,
     'Random': RandomListenerLearner,

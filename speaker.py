@@ -3,15 +3,16 @@ import numpy as np
 import theano.tensor as T
 from theano.tensor.nnet import crossentropy_categorical_1hot
 from lasagne.layers import InputLayer, DropoutLayer, EmbeddingLayer, NonlinearityLayer
-from lasagne.layers import ConcatLayer, ReshapeLayer, get_output
+from lasagne.layers import ConcatLayer, ReshapeLayer, DenseLayer, get_output
 from lasagne.layers.recurrent import LSTMLayer, Gate
 from lasagne.init import Constant
 from lasagne.nonlinearities import softmax
+from lasagne.objectives import categorical_crossentropy
 from lasagne.updates import rmsprop
 
 from bt import config, progress, iterators
 from bt.rng import get_rng
-from neural import NeuralLearner, SimpleLasagneModel
+from neural import NeuralLearner, SimpleLasagneModel, SymbolVectorizer
 
 parser = config.get_options_parser()
 parser.add_argument('--speaker_cell_size', type=int, default=20)
@@ -276,3 +277,114 @@ def masked_seq_crossentropy(mask):
         return (crossentropy_categorical_1hot_nd(coding_dist, true_idx) * mask_float).sum(axis=1)
 
     return msxe_loss
+
+
+class AtomicSpeakerLearner(NeuralLearner):
+    '''
+    A speaker that learns to produce descriptions as indivisible symbols (as
+    opposed to word-by-word sequences) given colors.
+    '''
+    def __init__(self, id=None):
+        options = config.options()
+        super(AtomicSpeakerLearner, self).__init__(options.speaker_color_resolution, id=id)
+        self.seq_vec = SymbolVectorizer()
+
+    def predict_and_score(self, eval_instances, random=False, verbosity=0):
+        options = config.options()
+
+        predictions = []
+        scores = []
+        batches = iterators.iter_batches(eval_instances, options.speaker_eval_batch_size)
+        num_batches = (len(eval_instances) - 1) // options.speaker_eval_batch_size + 1
+
+        if options.verbosity + verbosity >= 2:
+            print('Testing')
+        progress.start_task('Eval batch', num_batches)
+        for batch_num, batch in enumerate(batches):
+            progress.progress(batch_num)
+            batch = list(batch)
+
+            xs, (y,) = self._data_to_arrays(batch, test=True)
+
+            probs = self.model.predict(xs)
+            if random:
+                indices = sample(probs)
+            else:
+                indices = probs.argmax(axis=1)
+            predictions.extend(self.seq_vec.unvectorize_all(indices))
+            scores_arr = np.log(probs[np.arange(len(batch)), y])
+            scores.extend(scores_arr.tolist())
+        progress.end_task()
+
+        return predictions, scores
+
+    def _data_to_arrays(self, training_instances,
+                        init_vectorizer=False, test=False, inverted=False):
+        options = config.options()
+
+        get_i, get_o = (lambda inst: inst.input), (lambda inst: inst.output)
+        get_color, get_desc = (get_o, get_i) if inverted else (get_i, get_o)
+
+        if init_vectorizer:
+            self.seq_vec.add_all(get_desc(inst) for inst in training_instances)
+
+        sentences = []
+        colors = []
+        for i, inst in enumerate(training_instances):
+            desc = get_desc(inst)
+            if get_color(inst):
+                (hue, sat, val) = get_color(inst)
+            else:
+                assert test
+                hue = sat = val = 0.0
+            color_0_1 = colorsys.hsv_to_rgb(hue / 360.0, sat / 100.0, val / 100.0)
+            assert all(0.0 <= d <= 1.0 for d in color_0_1), (get_color(inst), color_0_1)
+            color = tuple(min(d * 256, 255) for d in color_0_1)
+            if options.verbosity >= 9:
+                print('%s -> %s' % (repr(desc), repr(color)))
+            sentences.append(desc)
+            colors.append(color)
+
+        x = np.zeros((len(sentences),), dtype=np.int32)
+        y = np.zeros((len(sentences),), dtype=np.int32)
+        for i, sentence in enumerate(sentences):
+            x[i] = self.color_vec.vectorize(colors[i])
+            y[i] = self.seq_vec.vectorize(sentence)
+
+        return [x], [y]
+
+    def _build_model(self, model_class=SimpleLasagneModel):
+        id_tag = (self.id + '/') if self.id else ''
+        input_var = T.ivector(id_tag + 'inputs')
+        target_var = T.ivector(id_tag + 'targets')
+
+        self.l_out, self.input_layers = self._get_l_out([input_var])
+        self.loss = categorical_crossentropy
+
+        self.model = model_class([input_var], [target_var], self.l_out,
+                                 loss=self.loss, optimizer=rmsprop, id=self.id)
+
+        self.prior_emp = UniformPrior()
+        self.prior_smooth = UniformPrior()
+
+    def _get_l_out(self, input_vars):
+        options = config.options()
+        id_tag = (self.id + '/') if self.id else ''
+
+        input_var = input_vars[0]
+
+        l_color = InputLayer(shape=(None,), input_var=input_var,
+                             name=id_tag + 'color_input')
+        l_color_embed = EmbeddingLayer(l_color, input_size=self.color_vec.num_types,
+                                       output_size=options.speaker_cell_size,
+                                       name=id_tag + 'color_embed')
+        l_color_drop = DropoutLayer(l_color_embed, p=0.2, name=id_tag + 'color_drop')
+        l_hidden = DenseLayer(l_color_drop, num_units=options.speaker_cell_size,
+                              name=id_tag + 'hidden')
+        l_hidden_drop = DropoutLayer(l_hidden, p=0.2, name=id_tag + 'hidden_drop')
+        l_scores = DenseLayer(l_hidden_drop, num_units=self.seq_vec.num_types,
+                              name=id_tag + 'scores')
+        l_out = NonlinearityLayer(l_scores, nonlinearity=softmax,
+                                  name=id_tag + 'softmax')
+
+        return l_out, [l_color]

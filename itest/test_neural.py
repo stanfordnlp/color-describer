@@ -3,11 +3,12 @@ import mock
 import os
 import png
 import StringIO
+import sys
 from numbers import Number
 from unittest import TestCase
 
 from bt import config, instance, summary
-from speaker import SpeakerLearner
+from speaker import SpeakerLearner, AtomicSpeakerLearner
 from listener import ListenerLearner
 
 
@@ -51,6 +52,13 @@ def mock_get_file_path(test_dir):
 
 class TestModels(TestCase):
     def test_speaker(self):
+        self.run_speaker(SpeakerLearner)
+
+    def test_atomic_speaker(self):
+        self.run_speaker(AtomicSpeakerLearner)
+
+    def run_speaker(self, speaker_class):
+        sys.argv = []
         options = config.options()
         options.train_iters = 2
         options.train_epochs = 3
@@ -61,7 +69,7 @@ class TestModels(TestCase):
                 mock.patch('bt.summary.SummaryWriter', MockSummaryWriter), \
                 mock.patch('bt.config.open', mo), \
                 mock.patch('bt.config.get_file_path', mgfp):
-            speaker = SpeakerLearner()
+            speaker = speaker_class()
             train_data = [instance.Instance((0, 255, 0), 'green')]
             speaker.train(train_data)
             predictions, scores = speaker.predict_and_score(train_data)
@@ -84,6 +92,7 @@ class TestModels(TestCase):
                 self.assertIsInstance(v.simple_value, float)
 
     def test_listener(self):
+        sys.argv = []
         options = config.options()
         options.train_iters = 2
         options.train_epochs = 3
