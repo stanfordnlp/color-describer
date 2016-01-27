@@ -1,5 +1,6 @@
 import operator
 import theano.tensor as T
+from collections import OrderedDict
 from lasagne.updates import rmsprop
 
 from bt import config
@@ -38,6 +39,10 @@ parser.add_argument('--listener_samples', type=int, default=128,
                     help='Number of samples to draw from the listener per minibatch.')
 parser.add_argument('--speaker_samples', type=int, default=128,
                     help='Number of samples to draw from the speaker per minibatch.')
+
+parser.add_argument('--monitor_sublosses', action='store_true',
+                    help='If `True`, return sub-losses for monitoring and write them to the '
+                         'TensorBoard events file. This will likely increase compilation time.')
 
 
 class AggregatePrior(object):
@@ -125,13 +130,13 @@ class RSAGraphModel(SimpleLasagneModel):
         for agent in self.listeners:
             agent.model.build_sample_vars(len(self.speakers))
 
-        est_loss = self.get_est_loss()
+        est_losses = self.get_est_loss()
         est_grad = self.get_est_grad(params)
         synth_vars = [v
                       for agent in self.listeners + self.speakers
                       for v in agent.model.all_synth_vars]
 
-        return est_loss, est_grad, synth_vars
+        return est_losses, est_grad, synth_vars
 
     def get_est_loss(self):
         options = config.options()
@@ -144,30 +149,45 @@ class RSAGraphModel(SimpleLasagneModel):
                                          agent_q.model.sample_target_others[other_idx])
             ).mean()
 
-        id_tag = (self.id + ': ') if self.id else ''
+        id_tag_log = (self.id + ': ') if self.id else ''
+        id_tag = (self.id + '/') if self.id else ''
         # \alpha * KL(dataset || L) = \alpha * log L(dataset) + C
         if options.verbosity >= 4:
-            print(id_tag + 'loss: KL(dataset || L)')
-        est_loss = t_sum(alpha * listener.loss_out().mean()
-                         for alpha, listener in zip(options.rsa_alpha, self.listeners))
+            print(id_tag_log + 'loss: KL(dataset || L)')
+        alpha_losses = [
+            ('%salpha_%s' % (id_tag, listener.id), alpha * listener.loss_out().mean())
+            for alpha, listener in zip(options.rsa_alpha, self.listeners)
+        ]
         # \beta * KL(dataset || S) = \beta * log S(dataset) + C
         if options.verbosity >= 4:
-            print(id_tag + 'loss: KL(dataset || S)')
-        est_loss += t_sum(beta * speaker.loss_out().mean()
-                          for beta, speaker in zip(options.rsa_beta, self.speakers))
+            print(id_tag_log + 'loss: KL(dataset || S)')
+        beta_losses = [
+            ('%sbeta_%s' % (id_tag, speaker.id), beta * speaker.loss_out().mean())
+            for beta, speaker in zip(options.rsa_beta, self.speakers)
+        ]
 
         # \mu * KL(L || S)
         if options.verbosity >= 4:
-            print(id_tag + 'loss: KL(L || S)')
-        est_loss += t_sum(mu * kl(listener, speaker, k)
-                          for mu, (listener, j, speaker, k) in zip(options.rsa_mu, self.dyads()))
+            print(id_tag_log + 'loss: KL(L || S)')
+        mu_losses = [
+            ('%smu_%s_%s' % (id_tag, listener.id, speaker.id), mu * kl(listener, speaker, k))
+            for mu, (listener, j, speaker, k) in zip(options.rsa_mu, self.dyads())
+        ]
         # \nu * KL(S || L)
         if options.verbosity >= 4:
-            print(id_tag + 'loss: KL(S || L)')
-        est_loss += t_sum(nu * kl(speaker, listener, j)
-                          for nu, (listener, j, speaker, k) in zip(options.rsa_nu, self.dyads()))
+            print(id_tag_log + 'loss: KL(S || L)')
+        nu_losses = [
+            ('%snu_%s_%s' % (id_tag, speaker.id, listener.id), nu * kl(speaker, listener, j))
+            for nu, (listener, j, speaker, k) in zip(options.rsa_nu, self.dyads())
+        ]
 
-        return est_loss
+        all_sublosses = alpha_losses + beta_losses + mu_losses + nu_losses
+        est_loss = t_sum(loss for tag, loss in all_sublosses)
+
+        monitored = OrderedDict([('loss', est_loss)])
+        if options.monitor_sublosses:
+            monitored.update(all_sublosses)
+        return monitored
 
     def get_est_grad(self, params):
         options = config.options()

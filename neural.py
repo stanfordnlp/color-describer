@@ -5,7 +5,7 @@ import operator
 import theano
 import theano.tensor as T
 import time
-from collections import Sequence
+from collections import Sequence, OrderedDict
 from lasagne.layers import get_output, get_all_params
 from theano.compile import MonitorMode
 
@@ -293,9 +293,10 @@ class SimpleLasagneModel(object):
         id_tag_log = (self.id + ': ') if self.id else ''
 
         params = self.params()
-        (train_loss,
+        (monitored,
          train_loss_grads,
          synth_vars) = self.get_train_loss(target_vars, params)
+        self.monitored_tags = monitored.keys()
         updates = optimizer(train_loss_grads, params, learning_rate=0.001)
         if options.detect_nans:
             mode = MonitorMode(post_func=detect_nan)
@@ -307,8 +308,8 @@ class SimpleLasagneModel(object):
         params = input_vars + target_vars + synth_vars
         if options.verbosity >= 6:
             print('params = %s' % (params,))
-        self.train_fn = theano.function(params,
-                                        train_loss, updates=updates, mode=mode,
+        self.train_fn = theano.function(params, monitored.values(),
+                                        updates=updates, mode=mode,
                                         name=id_tag + 'train', on_unused_input='warn')
 
         test_prediction = get_output(l_out, deterministic=True)
@@ -326,7 +327,7 @@ class SimpleLasagneModel(object):
         assert len(target_vars) == 1
         prediction = get_output(self.l_out)
         mean_loss = self.loss(prediction, target_vars[0]).mean()
-        return mean_loss, T.grad(mean_loss, params), []
+        return OrderedDict([('loss', mean_loss)]), T.grad(mean_loss, params), []
 
     def fit(self, Xs, ys, batch_size, num_epochs, summary_writer=None, step=0):
         options = config.options()
@@ -335,13 +336,14 @@ class SimpleLasagneModel(object):
             raise ValueError('Xs should be a sequence, instead got %s' % (Xs,))
         if not isinstance(ys, Sequence):
             raise ValueError('ys should be a sequence, instead got %s' % (ys,))
-        loss_history = []
+        history = OrderedDict((tag, []) for tag in self.monitored_tags)
+        id_tag = (self.id + '/') if self.id else ''
 
         progress.start_task('Epoch', num_epochs)
         epoch_start = time.time()
         for epoch in range(num_epochs):
             progress.progress(epoch)
-            loss_epoch = []
+            history_epoch = OrderedDict((tag, []) for tag in self.monitored_tags)
             num_minibatches_approx = len(ys[0]) // batch_size + 1
 
             progress.start_task('Minibatch', num_minibatches_approx)
@@ -351,21 +353,24 @@ class SimpleLasagneModel(object):
                     print('types: %s' % ([type(v) for t in batch for v in t],))
                     print('shapes: %s' % ([v.shape for t in batch for v in t],))
                 inputs, targets, synth = batch
-                loss_epoch.append(self.train_fn(*inputs + targets + synth))
+                monitored = self.train_fn(*inputs + targets + synth)
+                for tag, value in zip(self.monitored_tags, monitored):
+                    history_epoch[tag].append(value)
             progress.end_task()
 
-            loss_history.append(loss_epoch)
-            summary_writer.log_scalar(step + epoch,
-                                      'loss_epoch', np.mean(loss_epoch))
+            for tag, values in history_epoch.items():
+                history[tag].append(np.array(values))
+                summary_writer.log_scalar(step + epoch,
+                                          tag, np.mean(values))
 
             epoch_end = time.time()
             examples_per_sec = len(ys[0]) / (epoch_end - epoch_start)
             summary_writer.log_scalar(step + epoch,
-                                      'examples_per_sec', examples_per_sec)
+                                      id_tag + 'examples_per_sec', examples_per_sec)
             epoch_start = epoch_end
         progress.end_task()
 
-        return np.array(loss_history)
+        return history
 
     def predict(self, Xs):
         options = config.options()
