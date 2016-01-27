@@ -4,6 +4,7 @@ import numpy as np
 import operator
 import theano
 import theano.tensor as T
+import time
 from collections import Sequence
 from lasagne.layers import get_output, get_all_params
 from theano.compile import MonitorMode
@@ -266,7 +267,7 @@ class SimpleLasagneModel(object):
         mean_loss = self.loss(prediction, target_vars[0]).mean()
         return mean_loss, T.grad(mean_loss, params), []
 
-    def fit(self, Xs, ys, batch_size, num_epochs):
+    def fit(self, Xs, ys, batch_size, num_epochs, summary_writer=None, step=0):
         options = config.options()
 
         if not isinstance(Xs, Sequence):
@@ -276,6 +277,7 @@ class SimpleLasagneModel(object):
         loss_history = []
 
         progress.start_task('Epoch', num_epochs)
+        epoch_start = time.time()
         for epoch in range(num_epochs):
             progress.progress(epoch)
             loss_epoch = []
@@ -292,6 +294,14 @@ class SimpleLasagneModel(object):
             progress.end_task()
 
             loss_history.append(loss_epoch)
+            summary_writer.log_scalar(step + epoch,
+                                      'loss_epoch', np.mean(loss_epoch))
+
+            epoch_end = time.time()
+            examples_per_sec = len(ys[0]) / (epoch_end - epoch_start)
+            summary_writer.log_scalar(step + epoch,
+                                      'examples_per_sec', examples_per_sec)
+            epoch_start = epoch_end
         progress.end_task()
 
         return np.array(loss_history)
@@ -357,15 +367,14 @@ class NeuralLearner(Learner):
         summary_path = config.get_file_path('losses.tfevents')
         if summary_path:
             writer = summary.SummaryWriter(summary_path)
+        else:
+            writer = None
         progress.start_task('Iteration', options.train_iters)
         for iteration in range(options.train_iters):
             progress.progress(iteration)
-            losses_iter = self.model.fit(xs, ys, batch_size=options.batch_size,
-                                         num_epochs=options.train_epochs)
-            if summary_path:
-                for e, loss in enumerate(np.mean(losses_iter, axis=1).tolist()):
-                    writer.log_scalar(iteration * options.train_epochs + e,
-                                      'loss_epoch', loss)
+            self.model.fit(xs, ys, batch_size=options.batch_size, num_epochs=options.train_epochs,
+                           summary_writer=writer, step=iteration * options.train_epochs)
+            if writer is not None:
                 self.on_iter_end((iteration + 1) * options.train_epochs, writer)
         progress.end_task()
 

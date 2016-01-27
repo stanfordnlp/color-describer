@@ -78,7 +78,7 @@ class TestModels(TestCase):
         lossesfile = mo.files[mgfp('losses.tfevents')]
         lossesfile.seek(0)
         events = list(summary.read_events(lossesfile))
-        self.assertEqual(len(events), 6)
+        self.assertEqual(len(events), 12)
         for e in events:
             for v in e.summary.value:
                 self.assertIsInstance(v.simple_value, float)
@@ -125,5 +125,5 @@ class TestModels(TestCase):
                     self.assertTrue(v.HasField('simple_value'))
                     self.assertIsInstance(v.simple_value, float)
                     num_scalars += 1
-        self.assertEqual(num_scalars, 6)
+        self.assertEqual(num_scalars, 12)
         self.assertEqual(num_images, 6)
