@@ -32,6 +32,9 @@ parser.add_argument('--verbosity', type=int, default=4,
 parser.add_argument('--monitor_grads', action='store_true',
                     help='If `True`, return gradients for monitoring and write them to the '
                          'TensorBoard events file.')
+parser.add_argument('--monitor_params', action='store_true',
+                    help='If `True`, write parameter value histograms out to the '
+                         'TensorBoard events file.')
 
 
 rng = get_rng()
@@ -348,6 +351,7 @@ class SimpleLasagneModel(object):
             raise ValueError('ys should be a sequence, instead got %s' % (ys,))
         history = OrderedDict((tag, []) for tag in self.monitored_tags)
         id_tag = (self.id + '/') if self.id else ''
+        params = self.params()
 
         progress.start_task('Epoch', num_epochs)
         epoch_start = time.time()
@@ -375,6 +379,15 @@ class SimpleLasagneModel(object):
                     summary_writer.log_scalar(step + epoch, tag, mean_values)
                 else:
                     summary_writer.log_histogram(step + epoch, tag, mean_values)
+
+            if options.monitor_params:
+                for param in params:
+                    val = param.get_value()
+                    tag = 'param/' + param.name
+                    if len(val.shape) == 0:
+                        summary_writer.log_scalar(step + epoch, tag, val)
+                    else:
+                        summary_writer.log_histogram(step + epoch, tag, val)
 
             epoch_end = time.time()
             examples_per_sec = len(ys[0]) / (epoch_end - epoch_start)
