@@ -43,6 +43,9 @@ parser.add_argument('--speaker_samples', type=int, default=128,
 parser.add_argument('--monitor_sublosses', action='store_true',
                     help='If `True`, return sub-losses for monitoring and write them to the '
                          'TensorBoard events file. This will likely increase compilation time.')
+parser.add_argument('--monitor_subgrads', action='store_true',
+                    help='If `True`, return sub-gradients for monitoring and write them to the '
+                         'TensorBoard events file. This will likely increase compilation time.')
 
 
 class AggregatePrior(object):
@@ -130,13 +133,14 @@ class RSAGraphModel(SimpleLasagneModel):
         for agent in self.listeners:
             agent.model.build_sample_vars(len(self.speakers))
 
-        est_losses = self.get_est_loss()
-        est_grad = self.get_est_grad(params)
+        monitored = self.get_est_loss()
+        est_grad, monitored_grads = self.get_est_grad(params)
+        monitored.update(monitored_grads)
         synth_vars = [v
                       for agent in self.listeners + self.speakers
                       for v in agent.model.all_synth_vars]
 
-        return est_losses, est_grad, synth_vars
+        return monitored, est_grad, synth_vars
 
     def get_est_loss(self):
         options = config.options()
@@ -208,16 +212,19 @@ class RSAGraphModel(SimpleLasagneModel):
         #   \alpha_j E_D [-d/d\theta_j log L(c | m; \theta_j)]
         if options.verbosity >= 4:
             print(id_tag + 'grad: alpha')
-        est_grad = t_sum((mean_grad(alpha * listener.loss_out())
-                          for alpha, listener in zip(options.rsa_alpha, self.listeners)),
-                         nested=True)
+        all_subgrads = [
+            ('grad_alpha/%s' % (listener.id,),
+             mean_grad(alpha * listener.loss_out()))
+            for alpha, listener in zip(options.rsa_alpha, self.listeners)
+        ]
         #   \beta_k E_D [-d/d\phi_k log S(m | c; \phi_k)]
         if options.verbosity >= 4:
             print(id_tag + 'grad: beta')
-        est_grad = t_sum((mean_grad(beta * speaker.loss_out())
-                          for beta, speaker in zip(options.rsa_beta, self.speakers)),
-                         est_grad,
-                         nested=True)
+        all_subgrads.extend([
+            ('grad_beta/%s' % (speaker.id,),
+             mean_grad(beta * speaker.loss_out()))
+            for beta, speaker in zip(options.rsa_beta, self.speakers)
+        ])
 
         # The "simple" mu and nu terms: train the agents directly against each other.
         # These are still ordinary log-likelihood terms; the complexity comes from
@@ -225,21 +232,21 @@ class RSAGraphModel(SimpleLasagneModel):
         #   sum_k \nu_jk E_{G_S(\phi_k)} [-d/d\theta_j log L(c | m; \theta_j)]
         if options.verbosity >= 4:
             print(id_tag + 'grad: nu co-training')
-        est_grad = t_sum(
-            (mean_grad(nu * listener.loss_out(listener.model.sample_inputs_others[k],
-                                              listener.model.sample_target_others[k]))
-             for nu, (listener, j, speaker, k) in zip(options.rsa_nu, self.dyads())),
-            est_grad,
-            nested=True)
+        all_subgrads.extend([
+            ('grad_nu_co/%s_%s' % (listener.id, speaker.id),
+             mean_grad(nu * listener.loss_out(listener.model.sample_inputs_others[k],
+                                              listener.model.sample_target_others[k])))
+            for nu, (listener, j, speaker, k) in zip(options.rsa_nu, self.dyads())
+        ])
         #   sum_j \nu_jk E_{G_L(\theta_j)} [-d/d\phi_k log S(m | c; \phi_k)]
         if options.verbosity >= 4:
             print(id_tag + 'grad: mu co-training')
-        est_grad = t_sum(
-            (mean_grad(mu * speaker.loss_out(speaker.model.sample_inputs_others[j],
-                                             speaker.model.sample_target_others[j]))
-             for mu, (listener, j, speaker, k) in zip(options.rsa_mu, self.dyads())),
-            est_grad,
-            nested=True)
+        all_subgrads.extend([
+            ('grad_mu_co/%s_%s' % (listener.id, speaker.id),
+             mean_grad(mu * speaker.loss_out(speaker.model.sample_inputs_others[j],
+                                             speaker.model.sample_target_others[j])))
+            for mu, (listener, j, speaker, k) in zip(options.rsa_mu, self.dyads())
+        ])
 
         # The "hard" mu and nu terms: regularize the agents with maximum entropy and
         # accommodating other agents' priors.
@@ -248,37 +255,51 @@ class RSAGraphModel(SimpleLasagneModel):
         #      d/d\theta_j log L(c | m; \theta_j)]
         if options.verbosity >= 4:
             print(id_tag + 'grad: mu regularizer')
-        est_grad = t_sum(
-            (mean_weighted_grad(
-                mu *
-                (1 + listener.log_joint_emp(listener.model.sample_inputs_self,
-                                            listener.model.sample_target_self) -
-                 speaker.log_joint_smooth(speaker.model.sample_inputs_others[j],
-                                          speaker.model.sample_target_others[j])),
-                listener.loss_out(listener.model.sample_inputs_self,
-                                  listener.model.sample_target_self))
-             for mu, (listener, j, speaker, k) in zip(options.rsa_mu, self.dyads())),
-            est_grad,
-            nested=True)
+        all_subgrads.extend([
+            ('grad_mu_reg/%s_%s' % (listener.id, speaker.id),
+             mean_weighted_grad(
+                 mu *
+                 (1 + listener.log_joint_emp(listener.model.sample_inputs_self,
+                                             listener.model.sample_target_self) -
+                  speaker.log_joint_smooth(speaker.model.sample_inputs_others[j],
+                                           speaker.model.sample_target_others[j])),
+                 listener.loss_out(listener.model.sample_inputs_self,
+                                   listener.model.sample_target_self)))
+            for mu, (listener, j, speaker, k) in zip(options.rsa_mu, self.dyads())
+        ])
         #   sum_j \nu_jk E_{G_S(\phi_k)}
         #     [(1 + log G_S(c, m; \phi_k) - log H_L(c, m; \theta_j)) *
         #      d/d\phi_k log S(m | c; \phi_k)]
         if options.verbosity >= 4:
             print(id_tag + 'grad: nu regularizer')
-        est_grad = t_sum(
-            (mean_weighted_grad(
-                nu *
-                (1 + speaker.log_joint_emp(speaker.model.sample_inputs_self,
-                                           speaker.model.sample_target_self) -
-                 listener.log_joint_smooth(listener.model.sample_inputs_others[k],
-                                           listener.model.sample_target_others[k])),
-                speaker.loss_out(speaker.model.sample_inputs_self,
-                                 speaker.model.sample_target_self))
-             for nu, (listener, j, speaker, k) in zip(options.rsa_nu, self.dyads())),
-            est_grad,
-            nested=True)
+        all_subgrads.extend([
+            ('grad_nu_reg/%s_%s' % (listener.id, speaker.id),
+             mean_weighted_grad(
+                 nu *
+                 (1 + speaker.log_joint_emp(speaker.model.sample_inputs_self,
+                                            speaker.model.sample_target_self) -
+                  listener.log_joint_smooth(listener.model.sample_inputs_others[k],
+                                            listener.model.sample_target_others[k])),
+                 speaker.loss_out(speaker.model.sample_inputs_self,
+                                  speaker.model.sample_target_self)))
+            for nu, (listener, j, speaker, k) in zip(options.rsa_nu, self.dyads())
+        ])
 
-        return est_grad
+        est_grad = t_sum([grads for tag, grads in all_subgrads], nested=True)
+
+        monitored = OrderedDict()
+        if options.monitor_grads:
+            monitored.update([
+                ('grad/' + param.name, grad)
+                for param, grad in zip(params, est_grad)
+            ])
+        if options.monitor_subgrads:
+            monitored.update([
+                (tag + '/' + param.name, grad)
+                for tag, grads in all_subgrads
+                for param, grad in zip(params, grads)
+            ])
+        return est_grad, monitored
 
     def dyads(self):
         for j, listener in enumerate(self.listeners):
