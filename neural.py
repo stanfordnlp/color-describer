@@ -29,6 +29,9 @@ parser.add_argument('--verbosity', type=int, default=4,
                          '6-7: plus parameter names for each function compilation; '
                          '8: plus shapes and types for each compiled function call; '
                          '9-10: plus vectorization of all datasets')
+parser.add_argument('--monitor_grads', action='store_true',
+                    help='If `True`, return gradients for monitoring and write them to the '
+                         'TensorBoard events file.')
 
 
 rng = get_rng()
@@ -324,10 +327,17 @@ class SimpleLasagneModel(object):
         return get_all_params(self.l_out, trainable=True)
 
     def get_train_loss(self, target_vars, params):
+        options = config.options()
+
         assert len(target_vars) == 1
         prediction = get_output(self.l_out)
         mean_loss = self.loss(prediction, target_vars[0]).mean()
-        return OrderedDict([('loss', mean_loss)]), T.grad(mean_loss, params), []
+        monitored = [('loss', mean_loss)]
+        grads = T.grad(mean_loss, params)
+        if options.monitor_grads:
+            for p, grad in zip(params, grads):
+                monitored.append(('grad/' + p.name, grad))
+        return OrderedDict(monitored), grads, []
 
     def fit(self, Xs, ys, batch_size, num_epochs, summary_writer=None, step=0):
         options = config.options()
@@ -360,8 +370,11 @@ class SimpleLasagneModel(object):
 
             for tag, values in history_epoch.items():
                 history[tag].append(np.array(values))
-                summary_writer.log_scalar(step + epoch,
-                                          tag, np.mean(values))
+                mean_values = np.mean(values, axis=0)
+                if len(mean_values.shape) == 0:
+                    summary_writer.log_scalar(step + epoch, tag, mean_values)
+                else:
+                    summary_writer.log_histogram(step + epoch, tag, mean_values)
 
             epoch_end = time.time()
             examples_per_sec = len(ys[0]) / (epoch_end - epoch_start)
