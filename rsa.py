@@ -3,7 +3,7 @@ import theano.tensor as T
 from collections import OrderedDict
 from lasagne.updates import rmsprop
 
-from bt import config
+from stanza.unstable import config
 from neural import SimpleLasagneModel, NeuralLearner
 from speaker import SpeakerLearner
 from listener import ListenerLearner

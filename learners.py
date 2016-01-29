@@ -1,8 +1,8 @@
 from collections import defaultdict, Counter
 import numpy as np
 
-from bt.learner import Learner
-from bt import progress
+from stanza.unstable.learner import Learner
+from stanza.unstable import progress
 from listener import ListenerLearner
 from speaker import SpeakerLearner, AtomicSpeakerLearner
 from rsa import RSALearner
@@ -18,7 +18,7 @@ def new(key):
 
 class Histogram(object):
     '''
-    >>> from bt.instance import Instance as I
+    >>> from stanza.unstable.instance import Instance as I
     >>> data = [I((0.0, 100.0, 49.0), 'red'),
     ...         I((0.0, 100.0, 45.0), 'dark red'),
     ...         I((240.0, 100.0, 49.0), 'blue')]

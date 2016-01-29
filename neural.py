@@ -9,9 +9,9 @@ from collections import Sequence, OrderedDict
 from lasagne.layers import get_output, get_all_params
 from theano.compile import MonitorMode
 
-from bt import config, progress, summary
-from bt.learner import Learner
-from bt.rng import get_rng
+from stanza.unstable import config, progress, summary
+from stanza.unstable.learner import Learner
+from stanza.unstable.rng import get_rng
 
 parser = config.get_options_parser()
 parser.add_argument('--train_iters', type=int, default=10,

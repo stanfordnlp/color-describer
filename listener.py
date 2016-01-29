@@ -10,7 +10,7 @@ from lasagne.objectives import categorical_crossentropy
 from lasagne.nonlinearities import softmax
 from lasagne.updates import rmsprop
 
-from bt import config, instance, progress, iterators
+from stanza.unstable import config, instance, progress, iterators
 from neural import NeuralLearner, SimpleLasagneModel
 
 parser = config.get_options_parser()

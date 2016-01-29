@@ -7,7 +7,7 @@ import sys
 from numbers import Number
 from unittest import TestCase
 
-from bt import config, instance, summary
+from stanza.unstable import config, instance, summary
 from speaker import SpeakerLearner, AtomicSpeakerLearner
 from listener import ListenerLearner
 
@@ -65,10 +65,10 @@ class TestModels(TestCase):
 
         mo = MockOpen(TEST_DIR)
         mgfp = mock_get_file_path(TEST_DIR)
-        with mock.patch('bt.summary.open', mo), \
-                mock.patch('bt.summary.SummaryWriter', MockSummaryWriter), \
-                mock.patch('bt.config.open', mo), \
-                mock.patch('bt.config.get_file_path', mgfp):
+        with mock.patch('stanza.unstable.summary.open', mo), \
+                mock.patch('stanza.unstable.summary.SummaryWriter', MockSummaryWriter), \
+                mock.patch('stanza.unstable.config.open', mo), \
+                mock.patch('stanza.unstable.config.get_file_path', mgfp):
             speaker = speaker_class()
             train_data = [instance.Instance((0, 255, 0), 'green')]
             speaker.train(train_data)
@@ -99,10 +99,10 @@ class TestModels(TestCase):
 
         mo = MockOpen(TEST_DIR)
         mgfp = mock_get_file_path(TEST_DIR)
-        with mock.patch('bt.summary.open', mo), \
-                mock.patch('bt.summary.SummaryWriter', MockSummaryWriter), \
-                mock.patch('bt.config.open', mo), \
-                mock.patch('bt.config.get_file_path', mgfp):
+        with mock.patch('stanza.unstable.summary.open', mo), \
+                mock.patch('stanza.unstable.summary.SummaryWriter', MockSummaryWriter), \
+                mock.patch('stanza.unstable.config.open', mo), \
+                mock.patch('stanza.unstable.config.get_file_path', mgfp):
             listener = ListenerLearner()
             train_data = [instance.Instance('green', (0, 255, 0))]
             listener.train(train_data)

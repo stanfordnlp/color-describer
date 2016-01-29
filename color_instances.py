@@ -6,8 +6,8 @@ except ImportError:
                      './dependencies?)\n')
     raise
 
-from bt.instance import Instance
-from bt.rng import get_rng
+from stanza.unstable.instance import Instance
+from stanza.unstable.rng import get_rng
 
 
 rng = get_rng()

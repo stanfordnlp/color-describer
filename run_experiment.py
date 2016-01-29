@@ -1,4 +1,4 @@
-from bt import pick_gpu, config
+from stanza.unstable import pick_gpu, config
 
 parser = config.get_options_parser()
 parser.add_argument('--device', default=None,
@@ -13,7 +13,7 @@ else:
     pick_gpu.bind_theano(options.device)
 
 
-from bt import evaluate, metrics, output, progress
+from stanza.unstable import evaluate, metrics, output, progress
 import datetime
 import learners
 import color_instances
