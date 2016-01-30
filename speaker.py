@@ -28,8 +28,12 @@ class UniformPrior(object):
         pass
 
     def apply(self, input_vars):
-        c, _, _ = input_vars
-        return -3.0 * np.log(256.0) * T.ones_like(c[:, 0])
+        c = input_vars[0]
+        if c.ndim == 1:
+            ones = T.ones_like(c)
+        else:
+            ones = T.ones_like(c[:, 0])
+        return -3.0 * np.log(256.0) * ones
 
 
 class SpeakerLearner(NeuralLearner):
@@ -222,13 +226,14 @@ class SpeakerLearner(NeuralLearner):
 
 
 def sample(a, temperature=1.0):
+    # helper function to sample an index from a probability array
     a = np.array(a)
     if len(a.shape) < 1:
         raise ValueError('scalar is not a valid probability distribution')
     elif len(a.shape) == 1:
-        # helper function to sample an index from a probability array
-        a = np.log(a) / temperature
-        a = np.exp(a) / np.sum(np.exp(a))
+        # Cast to higher resolution to try to get high-precision normalization
+        a = np.exp(np.log(a) / temperature).astype(np.float64)
+        a /= np.sum(a)
         return np.argmax(rng.multinomial(1, a, 1))
     else:
         return np.array([sample(s, temperature) for s in a])
@@ -388,3 +393,9 @@ class AtomicSpeakerLearner(NeuralLearner):
                                   name=id_tag + 'softmax')
 
         return l_out, [l_color]
+
+
+SPEAKERS = {
+    'Speaker': SpeakerLearner,
+    'AtomicSpeaker': AtomicSpeakerLearner,
+}

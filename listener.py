@@ -173,3 +173,8 @@ class ListenerLearner(NeuralLearner):
         l_out = NonlinearityLayer(l_scores, nonlinearity=softmax, name=id_tag + 'out')
 
         return l_out, [l_in]
+
+
+LISTENERS = {
+    'Listener': ListenerLearner,
+}

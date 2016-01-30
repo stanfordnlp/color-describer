@@ -5,14 +5,18 @@ from lasagne.updates import rmsprop
 
 from stanza.unstable import config
 from neural import SimpleLasagneModel, NeuralLearner
-from speaker import SpeakerLearner
-from listener import ListenerLearner
+from listener import ListenerLearner, LISTENERS
+from speaker import SpeakerLearner, SPEAKERS
 
 parser = config.get_options_parser()
 parser.add_argument('--rsa_listeners', type=int, default=1,
                     help='Number of listeners to use in RSA cooperative nets graph')
 parser.add_argument('--rsa_speakers', type=int, default=1,
                     help='Number of speakers to use in RSA cooperative nets graph')
+parser.add_argument('--listener_class', default='Listener', choices=LISTENERS.keys(),
+                    help='The name of the listener model to use in the RSA network.')
+parser.add_argument('--speaker_class', default='Speaker', choices=SPEAKERS.keys(),
+                    help='The name of the speaker model to use in the RSA network.')
 parser.add_argument('--eval_agent', type=int, default=0,
                     help='Index of the agent (listener/speaker) to use as the primary object '
                          'of evaluation. Whether this agent is a listener or speaker will be '
@@ -365,9 +369,9 @@ class RSALearner(NeuralLearner):
         options = config.options()
 
         id_tag = (id + '/') if id else ''
-        self.listeners = [ListenerLearner(id='%sL%d' % (id_tag, j))
+        self.listeners = [LISTENERS[options.listener_class](id='%sL%d' % (id_tag, j))
                           for j in range(options.rsa_listeners)]
-        self.speakers = [SpeakerLearner(id='%sS%d' % (id_tag, k))
+        self.speakers = [SPEAKERS[options.speaker_class](id='%sS%d' % (id_tag, k))
                          for k in range(options.rsa_speakers)]
 
         agents = self.listeners if options.listener else self.speakers
