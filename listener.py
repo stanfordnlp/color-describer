@@ -11,13 +11,26 @@ from lasagne.nonlinearities import softmax
 from lasagne.updates import rmsprop
 
 from stanza.unstable import config, instance, progress, iterators
-from neural import NeuralLearner, SimpleLasagneModel
+from neural import NeuralLearner, SimpleLasagneModel, NONLINEARITIES
 
 parser = config.get_options_parser()
-parser.add_argument('--listener_cell_size', type=int, default=20)
-parser.add_argument('--listener_forget_bias', type=float, default=5.0)
-parser.add_argument('--listener_color_resolution', type=int, default=4)
-parser.add_argument('--listener_eval_batch_size', type=int, default=65536)
+parser.add_argument('--listener_cell_size', type=int, default=20,
+                    help='The number of dimensions of all hidden layers and cells in '
+                         'the listener model.')
+parser.add_argument('--listener_forget_bias', type=float, default=5.0,
+                    help='The initial value of the forget gate bias in LSTM cells in '
+                         'the listener model. A positive initial forget gate bias '
+                         'encourages the model to remember everything by default.')
+parser.add_argument('--listener_nonlinearity', choices=NONLINEARITIES.keys(), default='rectify',
+                    help='The nonlinearity/activation function to use for dense and '
+                         'LSTM layers in the listener model.')
+parser.add_argument('--listener_color_resolution', type=int, default=4,
+                    help='The number of buckets along each dimension of color space '
+                         'for the output of the listener model.')
+parser.add_argument('--listener_eval_batch_size', type=int, default=65536,
+                    help='The number of examples per batch for evaluating the listener '
+                         'model. Higher means faster but more memory usage. This should '
+                         'not affect modeling accuracy.')
 
 
 class UnigramPrior(object):
@@ -157,15 +170,18 @@ class ListenerLearner(NeuralLearner):
                                     output_size=options.listener_cell_size,
                                     name=id_tag + 'desc_embed')
         l_lstm1 = LSTMLayer(l_in_embed, num_units=options.listener_cell_size,
+                            nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
                             forgetgate=Gate(b=Constant(options.listener_forget_bias)),
                             name=id_tag + 'lstm1')
         l_lstm1_drop = DropoutLayer(l_lstm1, p=0.2, name=id_tag + 'lstm1_drop')
         l_lstm2 = LSTMLayer(l_lstm1_drop, num_units=options.listener_cell_size,
+                            nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
                             forgetgate=Gate(b=Constant(options.listener_forget_bias)),
                             name=id_tag + 'lstm2')
         l_lstm2_drop = DropoutLayer(l_lstm2, p=0.2, name=id_tag + 'lstm2_drop')
 
-        l_hidden = DenseLayer(l_lstm2_drop, num_units=options.listener_cell_size, nonlinearity=None,
+        l_hidden = DenseLayer(l_lstm2_drop, num_units=options.listener_cell_size,
+                              nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
                               name=id_tag + 'hidden')
         l_hidden_drop = DropoutLayer(l_hidden, p=0.2, name=id_tag + 'hidden_drop')
         l_scores = DenseLayer(l_hidden_drop, num_units=self.color_vec.num_types, nonlinearity=None,

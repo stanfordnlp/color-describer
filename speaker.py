@@ -12,13 +12,26 @@ from lasagne.updates import rmsprop
 
 from stanza.unstable import config, progress, iterators
 from stanza.unstable.rng import get_rng
-from neural import NeuralLearner, SimpleLasagneModel, SymbolVectorizer
+from neural import NeuralLearner, SimpleLasagneModel, SymbolVectorizer, NONLINEARITIES
 
 parser = config.get_options_parser()
-parser.add_argument('--speaker_cell_size', type=int, default=20)
-parser.add_argument('--speaker_forget_bias', type=float, default=5.0)
-parser.add_argument('--speaker_color_resolution', type=int, default=4)
-parser.add_argument('--speaker_eval_batch_size', type=int, default=16384)
+parser.add_argument('--speaker_cell_size', type=int, default=20,
+                    help='The number of dimensions of all hidden layers and cells in '
+                         'the speaker model.')
+parser.add_argument('--speaker_forget_bias', type=float, default=5.0,
+                    help='The initial value of the forget gate bias in LSTM cells in '
+                         'the speaker model. A positive initial forget gate bias '
+                         'encourages the model to remember everything by default.')
+parser.add_argument('--speaker_nonlinearity', choices=NONLINEARITIES.keys(), default='rectify',
+                    help='The nonlinearity/activation function to use for dense and '
+                         'LSTM layers in the speaker model.')
+parser.add_argument('--speaker_color_resolution', type=int, default=4,
+                    help='The number of buckets along each dimension of color space '
+                         'for the input of the speaker model.')
+parser.add_argument('--speaker_eval_batch_size', type=int, default=16384,
+                    help='The number of examples per batch for evaluating the speaker '
+                         'model. Higher means faster but more memory usage. This should '
+                         'not affect modeling accuracy.')
 
 rng = get_rng()
 
@@ -197,10 +210,12 @@ class SpeakerLearner(NeuralLearner):
         l_mask_in = InputLayer(shape=(None, self.seq_vec.max_len - 1),
                                input_var=mask_var, name=id_tag + 'mask_input')
         l_lstm1 = LSTMLayer(l_in, mask_input=l_mask_in, num_units=options.speaker_cell_size,
+                            nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
                             forgetgate=Gate(b=Constant(options.speaker_forget_bias)),
                             name=id_tag + 'lstm1')
         l_lstm1_drop = DropoutLayer(l_lstm1, p=0.2, name=id_tag + 'lstm1_drop')
         l_lstm2 = LSTMLayer(l_lstm1_drop, num_units=len(self.seq_vec.tokens),
+                            nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
                             forgetgate=Gate(b=Constant(options.speaker_forget_bias)),
                             name=id_tag + 'lstm2')
         l_shape = ReshapeLayer(l_lstm2, (-1, len(self.seq_vec.tokens)),
@@ -385,9 +400,10 @@ class AtomicSpeakerLearner(NeuralLearner):
                                        name=id_tag + 'color_embed')
         l_color_drop = DropoutLayer(l_color_embed, p=0.2, name=id_tag + 'color_drop')
         l_hidden = DenseLayer(l_color_drop, num_units=options.speaker_cell_size,
+                              nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
                               name=id_tag + 'hidden')
         l_hidden_drop = DropoutLayer(l_hidden, p=0.2, name=id_tag + 'hidden_drop')
-        l_scores = DenseLayer(l_hidden_drop, num_units=self.seq_vec.num_types,
+        l_scores = DenseLayer(l_hidden_drop, num_units=self.seq_vec.num_types, nonlinearity=None,
                               name=id_tag + 'scores')
         l_out = NonlinearityLayer(l_scores, nonlinearity=softmax,
                                   name=id_tag + 'softmax')

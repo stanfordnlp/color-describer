@@ -41,6 +41,13 @@ rng = get_rng()
 lasagne.random.set_rng(rng)
 
 
+NONLINEARITIES = {
+    name: func
+    for name, func in lasagne.nonlinearities.__dict__.iteritems()
+    if name.islower() and not name.startswith('__')
+}
+
+
 def detect_nan(i, node, fn):
     if not isinstance(node.op, T.AllocEmpty):
         for output in fn.outputs:
