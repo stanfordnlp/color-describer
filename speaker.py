@@ -25,6 +25,9 @@ parser.add_argument('--speaker_forget_bias', type=float, default=5.0,
 parser.add_argument('--speaker_nonlinearity', choices=NONLINEARITIES.keys(), default='rectify',
                     help='The nonlinearity/activation function to use for dense and '
                          'LSTM layers in the speaker model.')
+parser.add_argument('--speaker_dropout', type=float, default=0.2,
+                    help='The dropout rate (probability of setting a value to zero). '
+                         'Dropout will be disabled if nonpositive.')
 parser.add_argument('--speaker_color_resolution', type=int, default=4,
                     help='The number of buckets along each dimension of color space '
                          'for the input of the speaker model.')
@@ -213,7 +216,11 @@ class SpeakerLearner(NeuralLearner):
                             nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
                             forgetgate=Gate(b=Constant(options.speaker_forget_bias)),
                             name=id_tag + 'lstm1')
-        l_lstm1_drop = DropoutLayer(l_lstm1, p=0.2, name=id_tag + 'lstm1_drop')
+        if options.speaker_dropout > 0.0:
+            l_lstm1_drop = DropoutLayer(l_lstm1, p=options.speaker_dropout,
+                                        name=id_tag + 'lstm1_drop')
+        else:
+            l_lstm1_drop = l_lstm1
         l_lstm2 = LSTMLayer(l_lstm1_drop, num_units=len(self.seq_vec.tokens),
                             nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
                             forgetgate=Gate(b=Constant(options.speaker_forget_bias)),
@@ -398,11 +405,19 @@ class AtomicSpeakerLearner(NeuralLearner):
         l_color_embed = EmbeddingLayer(l_color, input_size=self.color_vec.num_types,
                                        output_size=options.speaker_cell_size,
                                        name=id_tag + 'color_embed')
-        l_color_drop = DropoutLayer(l_color_embed, p=0.2, name=id_tag + 'color_drop')
+        if options.speaker_dropout > 0.0:
+            l_color_drop = DropoutLayer(l_color_embed, p=options.speaker_dropout,
+                                        name=id_tag + 'color_drop')
+        else:
+            l_color_drop = l_color_embed
         l_hidden = DenseLayer(l_color_drop, num_units=options.speaker_cell_size,
                               nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
                               name=id_tag + 'hidden')
-        l_hidden_drop = DropoutLayer(l_hidden, p=0.2, name=id_tag + 'hidden_drop')
+        if options.speaker_dropout > 0.0:
+            l_hidden_drop = DropoutLayer(l_hidden, p=options.speaker_dropout,
+                                         name=id_tag + 'hidden_drop')
+        else:
+            l_hidden_drop = l_hidden
         l_scores = DenseLayer(l_hidden_drop, num_units=self.seq_vec.num_types, nonlinearity=None,
                               name=id_tag + 'scores')
         l_out = NonlinearityLayer(l_scores, nonlinearity=softmax,

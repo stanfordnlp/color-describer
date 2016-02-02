@@ -24,6 +24,9 @@ parser.add_argument('--listener_forget_bias', type=float, default=5.0,
 parser.add_argument('--listener_nonlinearity', choices=NONLINEARITIES.keys(), default='rectify',
                     help='The nonlinearity/activation function to use for dense and '
                          'LSTM layers in the listener model.')
+parser.add_argument('--listener_dropout', type=float, default=0.2,
+                    help='The dropout rate (probability of setting a value to zero). '
+                         'Dropout will be disabled if nonpositive.')
 parser.add_argument('--listener_color_resolution', type=int, default=4,
                     help='The number of buckets along each dimension of color space '
                          'for the output of the listener model.')
@@ -173,17 +176,29 @@ class ListenerLearner(NeuralLearner):
                             nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
                             forgetgate=Gate(b=Constant(options.listener_forget_bias)),
                             name=id_tag + 'lstm1')
-        l_lstm1_drop = DropoutLayer(l_lstm1, p=0.2, name=id_tag + 'lstm1_drop')
+        if options.listener_dropout > 0.0:
+            l_lstm1_drop = DropoutLayer(l_lstm1, p=options.listener_dropout,
+                                        name=id_tag + 'lstm1_drop')
+        else:
+            l_lstm1_drop = l_lstm1
         l_lstm2 = LSTMLayer(l_lstm1_drop, num_units=options.listener_cell_size,
                             nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
                             forgetgate=Gate(b=Constant(options.listener_forget_bias)),
                             name=id_tag + 'lstm2')
-        l_lstm2_drop = DropoutLayer(l_lstm2, p=0.2, name=id_tag + 'lstm2_drop')
+        if options.listener_dropout > 0.0:
+            l_lstm2_drop = DropoutLayer(l_lstm2, p=options.listener_dropout,
+                                        name=id_tag + 'lstm2_drop')
+        else:
+            l_lstm2_drop = l_lstm2
 
         l_hidden = DenseLayer(l_lstm2_drop, num_units=options.listener_cell_size,
                               nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
                               name=id_tag + 'hidden')
-        l_hidden_drop = DropoutLayer(l_hidden, p=0.2, name=id_tag + 'hidden_drop')
+        if options.listener_dropout > 0.0:
+            l_hidden_drop = DropoutLayer(l_hidden, p=options.listener_dropout,
+                                         name=id_tag + 'hidden_drop')
+        else:
+            l_hidden_drop = l_hidden
         l_scores = DenseLayer(l_hidden_drop, num_units=self.color_vec.num_types, nonlinearity=None,
                               name=id_tag + 'scores')
         l_out = NonlinearityLayer(l_scores, nonlinearity=softmax, name=id_tag + 'out')
