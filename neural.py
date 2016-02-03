@@ -166,8 +166,8 @@ class ColorVectorizer(object):
     '''
     Maps colors to a uniform grid of buckets.
     '''
-    RANGES_RGB = (256, 256, 256)
-    RANGES_HSV = (360, 100, 100)
+    RANGES_RGB = (256.0, 256.0, 256.0)
+    RANGES_HSV = (360.0, 100.0, 100.0)
 
     def __init__(self, resolution, hsv=False):
         '''
@@ -182,7 +182,7 @@ class ColorVectorizer(object):
         self.num_types = reduce(operator.mul, resolution)
         self.hsv = hsv
         ranges = self.RANGES_HSV if hsv else self.RANGES_RGB
-        self.bucket_sizes = tuple(d // r for d, r in zip(ranges, resolution))
+        self.bucket_sizes = tuple(d / r for d, r in zip(ranges, resolution))
 
     def vectorize(self, color, hsv=None):
         '''
@@ -225,7 +225,7 @@ class ColorVectorizer(object):
             ranges = self.RANGES_HSV if self.hsv else self.RANGES_RGB
             color_internal = tuple(min(d, r - 0.01) for d, r in zip(color, ranges))
 
-        bucket_dims = [e // r for e, r in zip(color_internal, self.bucket_sizes)]
+        bucket_dims = [int(e // r) for e, r in zip(color_internal, self.bucket_sizes)]
         result = (bucket_dims[0] * self.resolution[1] * self.resolution[2] +
                   bucket_dims[1] * self.resolution[2] +
                   bucket_dims[2])
@@ -283,12 +283,12 @@ class ColorVectorizer(object):
                        else (d * size + size // 2))
                       for d, size in zip(bucket_start, self.bucket_sizes))
         if self.hsv:
-            c_hsv = color
-            c_rgb_0_1 = colorsys.hsv_to_rgb(*(d * 1.0 / r for d, r in zip(c_hsv, self.RANGES_HSV)))
+            c_hsv = tuple(int(d) for d in color)
+            c_rgb_0_1 = colorsys.hsv_to_rgb(*(d * 1.0 / r for d, r in zip(color, self.RANGES_HSV)))
             c_rgb = tuple(int(d * 256.0) for d in c_rgb_0_1)
         else:
-            c_rgb = color
-            c_hsv_0_1 = colorsys.rgb_to_hsv(*(d / 256.0 for d in c_rgb))
+            c_rgb = tuple(int(d) for d in color)
+            c_hsv_0_1 = colorsys.rgb_to_hsv(*(d / 256.0 for d in color))
             c_hsv = tuple(int(d * r) for d, r in zip(c_hsv_0_1, self.RANGES_HSV))
 
         if hsv:
@@ -340,13 +340,13 @@ class ColorVectorizer(object):
         images = [
             np.array(
                 np.meshgrid(0, np.arange(y // 2, ry, y), np.arange(z // 2, rz, z))
-            ).squeeze(2).transpose((1, 2, 0)),
+            ).squeeze(2).transpose((1, 2, 0)).astype(np.int),
             np.array(
                 np.meshgrid(np.arange(x // 2, rx, x), 0, np.arange(z // 2, rz, z))
-            ).squeeze(1).transpose((1, 2, 0)),
+            ).squeeze(1).transpose((1, 2, 0)).astype(np.int),
             np.array(
                 np.meshgrid(np.arange(x // 2, rx, x), np.arange(y // 2, ry, y), 0)
-            ).squeeze(3).transpose((2, 1, 0)),
+            ).squeeze(3).transpose((2, 1, 0)).astype(np.int),
         ]
         for axis in range(3):
             xsection = dist_3d.sum(axis=axis)
