@@ -5,8 +5,8 @@ from lasagne.updates import rmsprop
 
 from stanza.unstable import config
 from neural import SimpleLasagneModel, NeuralLearner
-from listener import ListenerLearner, LISTENERS
-from speaker import SpeakerLearner, SPEAKERS
+from listener import LISTENERS
+from speaker import SPEAKERS
 
 parser = config.get_options_parser()
 parser.add_argument('--rsa_listeners', type=int, default=1,
