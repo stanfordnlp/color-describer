@@ -30,6 +30,12 @@ parser.add_argument('--train_size', type=int, default=None,
 parser.add_argument('--test_size', type=int, default=None,
                     help='The number of examples to use in testing. '
                          'If None, use the whole dev/test set.')
+parser.add_argument('--output_train_data', action='store_true',
+                    help='If True, write out the training dataset (after cutting down to '
+                         '`train_size`) as a JSON-lines file in the output directory.')
+parser.add_argument('--output_test_data', action='store_true',
+                    help='If True, write out the evaluation dataset (after cutting down to '
+                         '`test_size`) as a JSON-lines file in the output directory.')
 parser.add_argument('--listener', action='store_true',
                     help='If True, evaluate on listener accuracy (description -> color). '
                          'Otherwise evaluate on speaker accuracy (color -> description).')
@@ -66,10 +72,12 @@ def main():
         with open(config.get_file_path('model.p'), 'wb') as outfile:
             learner.dump(outfile)
 
-        train_results = evaluate.evaluate(learner, train_data, metrics=m, split_id='train')
+        train_results = evaluate.evaluate(learner, train_data, metrics=m, split_id='train',
+                                          write_data=options.output_train_data)
         output.output_results(train_results, 'train')
 
-    dev_results = evaluate.evaluate(learner, dev_data, metrics=m, split_id='dev')
+    dev_results = evaluate.evaluate(learner, dev_data, metrics=m, split_id='dev',
+                                    write_data=options.output_test_data)
     output.output_results(dev_results, 'dev')
 
 
