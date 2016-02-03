@@ -165,51 +165,94 @@ class ColorVectorizer(object):
     '''
     Maps colors to a uniform grid of buckets.
     '''
-    def __init__(self, resolution):
+    RANGES_RGB = (256, 256, 256)
+    RANGES_HSV = (360, 100, 100)
+
+    def __init__(self, resolution, hsv=False):
         '''
         :param resolution: A length-3 sequence giving numbers of buckets along each
                            dimension of the RGB grid.
+        :param bool hsv: If `True`, buckets will be laid out in a grid in HSV space;
+                         otherwise, the grid will be in RGB space. Input and output
+                         color spaces can be configured on a per-call basis by
+                         using the `hsv` parameter of `vectorize` and `unvectorize`.
         '''
         self.resolution = resolution
         self.num_types = reduce(operator.mul, resolution)
-        self.bucket_sizes = tuple(256 // r for r in resolution)
+        self.hsv = hsv
+        ranges = self.RANGES_HSV if hsv else self.RANGES_RGB
+        self.bucket_sizes = tuple(d // r for d, r in zip(ranges, resolution))
 
-    def vectorize(self, color):
+    def vectorize(self, color, hsv=None):
         '''
         :param color: An length-3 vector or 1D array-like object containing
-                      RGB coordinates in the range [0, 256).
+                      color coordinates.
+        :param bool hsv: If `True`, input is assumed to be in HSV space in the range
+                         [0, 360], [0, 100], [0, 100]; if `False`, input should be in RGB
+                         space in the range [0, 256). `None` (default) means take the
+                         color space from the value given to the constructor.
         :return int: The bucket id for `color`
 
         >>> ColorVectorizer((2, 2, 2)).vectorize((0, 0, 0))
         0
         >>> ColorVectorizer((2, 2, 2)).vectorize((255, 0, 0))
         4
+        >>> ColorVectorizer((2, 2, 2)).vectorize((240, 100, 100), hsv=True)
+        ... # HSV (240, 100, 100) = RGB (0, 0, 255)
+        1
+        >>> ColorVectorizer((2, 2, 2), hsv=True).vectorize((0, 0, 0))
+        0
+        >>> ColorVectorizer((2, 2, 2), hsv=True).vectorize((240, 0, 0))
+        ... # yes, this is also black. Using HSV buckets is a questionable decision.
+        4
+        >>> ColorVectorizer((2, 2, 2), hsv=True).vectorize((0, 255, 0), hsv=False)
+        ... # RGB (0, 255, 0) = HSV (120, 100, 100)
+        3
         '''
-        bucket_dims = [e // r for e, r in zip(color, self.bucket_sizes)]
+        if hsv is None:
+            hsv = self.hsv
+
+        if hsv and not self.hsv:
+            c_hsv = color
+            c_rgb_0_1 = colorsys.hsv_to_rgb(*(d * 1.0 / r for d, r in zip(c_hsv, self.RANGES_HSV)))
+            color_internal = tuple(int(d * 255.99) for d in c_rgb_0_1)
+        elif not hsv and self.hsv:
+            c_rgb = color
+            c_hsv_0_1 = colorsys.rgb_to_hsv(*(d / 256.0 for d in c_rgb))
+            color_internal = tuple(int(d * (r - 0.01)) for d, r in zip(c_hsv_0_1, self.RANGES_HSV))
+        else:
+            color_internal = color
+
+        bucket_dims = [e // r for e, r in zip(color_internal, self.bucket_sizes)]
         return (bucket_dims[0] * self.resolution[1] * self.resolution[2] +
                 bucket_dims[1] * self.resolution[2] +
                 bucket_dims[2])
 
-    def vectorize_all(self, colors):
+    def vectorize_all(self, colors, hsv=None):
         '''
         :param colors: A sequence of length-3 vectors or 1D array-like objects containing
                       RGB coordinates in the range [0, 256).
         :param random: If true, sample a random color from the bucket
+        :param bool hsv: If `True`, input is assumed to be in HSV space in the range
+                         [0, 360], [0, 100], [0, 100]; if `False`, input should be in RGB
+                         space in the range [0, 256). `None` (default) means take the
+                         color space from the value given to the constructor.
         :return array(int32): The bucket ids for each color in `colors`
 
         >>> ColorVectorizer((2, 2, 2)).vectorize_all([(0, 0, 0), (255, 0, 0)])
         array([0, 4], dtype=int32)
         '''
-        return np.array([self.vectorize(c) for c in colors], dtype=np.int32)
+        return np.array([self.vectorize(c, hsv=hsv) for c in colors], dtype=np.int32)
 
-    def unvectorize(self, bucket, random=False, hsv=False):
+    def unvectorize(self, bucket, random=False, hsv=None):
         '''
         :param int bucket: The id of a color bucket
         :param random: If `True`, sample a random color from the bucket. Otherwise,
                        return the center of the bucket.
         :param hsv: If `True`, return colors in HSV format [0 <= hue <= 360,
-                    0 <= sat <= 100, 0 <= val <= 100]; otherwise, RGB
-                    [0 <= r/g/b <= 256].
+                    0 <= sat <= 100, 0 <= val <= 100]; if `False`, RGB
+                    [0 <= r/g/b <= 256]. `None` (default) means take the
+                    color space from the value given to the constructor.
         :return tuple(int): A color from the bucket with id `bucket`.
 
         >>> ColorVectorizer((2, 2, 2)).unvectorize(0)
@@ -218,27 +261,45 @@ class ColorVectorizer(object):
         (192, 64, 64)
         >>> ColorVectorizer((2, 2, 2)).unvectorize(4, hsv=True)
         (0, 66, 75)
+        >>> ColorVectorizer((2, 2, 2), hsv=True).unvectorize(0)
+        (90, 25, 25)
+        >>> ColorVectorizer((2, 2, 2), hsv=True).unvectorize(4)
+        (270, 25, 25)
+        >>> ColorVectorizer((2, 2, 2), hsv=True).unvectorize(4, hsv=False)
+        (56, 48, 64)
         '''
+        if hsv is None:
+            hsv = self.hsv
         bucket_start = (
             (bucket / (self.resolution[1] * self.resolution[2]) % self.resolution[0]),
             (bucket / self.resolution[2]) % self.resolution[1],
             bucket % self.resolution[2],
         )
-        rgb = tuple((rng.randint(d * size, (d + 1) * size) if random
-                     else (d * size + size // 2))
-                    for d, size in zip(bucket_start, self.bucket_sizes))
-        if hsv:
-            hue, sat, val = colorsys.rgb_to_hsv(*(d / 256.0 for d in rgb))
-            return (int(hue * 360.0), int(sat * 100.0), int(val * 100.0))
+        color = tuple((rng.randint(d * size, (d + 1) * size) if random
+                       else (d * size + size // 2))
+                      for d, size in zip(bucket_start, self.bucket_sizes))
+        if self.hsv:
+            c_hsv = color
+            c_rgb_0_1 = colorsys.hsv_to_rgb(*(d * 1.0 / r for d, r in zip(c_hsv, self.RANGES_HSV)))
+            c_rgb = tuple(int(d * 256.0) for d in c_rgb_0_1)
         else:
-            return rgb
+            c_rgb = color
+            c_hsv_0_1 = colorsys.rgb_to_hsv(*(d / 256.0 for d in c_rgb))
+            c_hsv = tuple(int(d * r) for d, r in zip(c_hsv_0_1, self.RANGES_HSV))
 
-    def unvectorize_all(self, buckets, random=False, hsv=False):
+        if hsv:
+            return c_hsv
+        else:
+            return c_rgb
+
+    def unvectorize_all(self, buckets, random=False, hsv=None):
         '''
         :param Sequence(int) buckets: A sequence of ids of color buckets
         :param random: If true, sample a random color from each bucket. Otherwise,
                        return the center of the bucket.
         :param hsv: If `True`, return colors in HSV format; otherwise, RGB.
+                    `None` (default) means take the color space from the value
+                    given to the constructor.
         :return list(tuple(int)): One color from each bucket in `buckets`
 
         >>> ColorVectorizer((2, 2, 2)).unvectorize_all([0, 4])
