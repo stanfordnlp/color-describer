@@ -7,6 +7,7 @@ import theano.tensor as T
 import time
 from collections import Sequence, OrderedDict
 from lasagne.layers import get_output, get_all_params
+from matplotlib.colors import hsv_to_rgb
 from theano.compile import MonitorMode
 
 from stanza.unstable import config, progress, summary
@@ -221,12 +222,15 @@ class ColorVectorizer(object):
             c_hsv_0_1 = colorsys.rgb_to_hsv(*(d / 256.0 for d in c_rgb))
             color_internal = tuple(int(d * (r - 0.01)) for d, r in zip(c_hsv_0_1, self.RANGES_HSV))
         else:
-            color_internal = color
+            ranges = self.RANGES_HSV if self.hsv else self.RANGES_RGB
+            color_internal = tuple(min(d, r - 0.01) for d, r in zip(color, ranges))
 
         bucket_dims = [e // r for e, r in zip(color_internal, self.bucket_sizes)]
-        return (bucket_dims[0] * self.resolution[1] * self.resolution[2] +
-                bucket_dims[1] * self.resolution[2] +
-                bucket_dims[2])
+        result = (bucket_dims[0] * self.resolution[1] * self.resolution[2] +
+                  bucket_dims[1] * self.resolution[2] +
+                  bucket_dims[2])
+        assert (0 <= result < self.num_types), (color, result)
+        return result
 
     def vectorize_all(self, colors, hsv=None):
         '''
@@ -329,23 +333,31 @@ class ColorVectorizer(object):
                 [[192,  64,   0], [192, 192, 127]]])]
         '''
         dist_3d = np.asarray(dist).reshape(self.resolution)
-        # Compute background: RGB for each bucket along each face with one channel set to 0
-        r, g, b = self.bucket_sizes
+        # Compute background: RGB/HSV for each bucket along each face with one channel set to 0
+        x, y, z = self.bucket_sizes
+        ranges = self.RANGES_HSV if self.hsv else self.RANGES_RGB
+        rx, ry, rz = ranges
         images = [
             np.array(
-                np.meshgrid(0, np.arange(g // 2, 256, g), np.arange(b // 2, 256, b))
+                np.meshgrid(0, np.arange(y // 2, ry, y), np.arange(z // 2, rz, z))
             ).squeeze(2).transpose((1, 2, 0)),
             np.array(
-                np.meshgrid(np.arange(r // 2, 256, r), 0, np.arange(b // 2, 256, b))
+                np.meshgrid(np.arange(x // 2, rx, x), 0, np.arange(z // 2, rz, z))
             ).squeeze(1).transpose((1, 2, 0)),
             np.array(
-                np.meshgrid(np.arange(r // 2, 256, r), np.arange(g // 2, 256, g), 0)
+                np.meshgrid(np.arange(x // 2, rx, x), np.arange(y // 2, ry, y), 0)
             ).squeeze(3).transpose((2, 1, 0)),
         ]
         for axis in range(3):
             xsection = dist_3d.sum(axis=axis)
             xsection /= xsection.max()
-            images[axis][:, :, axis] = (xsection * 255.99).astype(np.int)
+            if self.hsv:
+                im_float = images[axis].astype(np.float) / np.array(self.RANGES_HSV)
+                im_float[:, :, axis] = xsection
+                images[axis] = (hsv_to_rgb(im_float) *
+                                (np.array(self.RANGES_RGB) - 0.01)).astype(np.int)
+            else:
+                images[axis][:, :, axis] = (xsection * (ranges[axis] - 0.01)).astype(np.int)
         return images
 
 
@@ -501,12 +513,12 @@ class NeuralLearner(Learner):
     A base class for Lasagne-based learners.
     '''
 
-    def __init__(self, color_resolution, id=None):
+    def __init__(self, color_resolution, hsv=False, id=None):
         super(NeuralLearner, self).__init__()
         res = color_resolution
 
         self.seq_vec = SequenceVectorizer()
-        self.color_vec = ColorVectorizer((res, res, res))
+        self.color_vec = ColorVectorizer((res, res, res), hsv=hsv)
         self.id = id
 
     def train(self, training_instances):

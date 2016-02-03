@@ -30,6 +30,11 @@ parser.add_argument('--listener_dropout', type=float, default=0.2,
 parser.add_argument('--listener_color_resolution', type=int, default=4,
                     help='The number of buckets along each dimension of color space '
                          'for the output of the listener model.')
+parser.add_argument('--listener_hsv', action='store_true',
+                    help='If True, output color buckets are in HSV space; otherwise, '
+                         'color buckets will be in RGB. Final output instances will be in HSV '
+                         'regardless; this sets the internal representation for training '
+                         'and prediction.')
 parser.add_argument('--listener_eval_batch_size', type=int, default=65536,
                     help='The number of examples per batch for evaluating the listener '
                          'model. Higher means faster but more memory usage. This should '
@@ -68,7 +73,8 @@ class ListenerLearner(NeuralLearner):
     def __init__(self, id=None):
         options = config.options()
         self.word_counts = Counter()
-        super(ListenerLearner, self).__init__(options.listener_color_resolution, id=id)
+        super(ListenerLearner, self).__init__(options.listener_color_resolution,
+                                              options.listener_hsv, id=id)
 
     def predict_and_score(self, eval_instances, random=False, verbosity=0):
         options = config.options()
@@ -124,14 +130,10 @@ class ListenerLearner(NeuralLearner):
         for i, inst in enumerate(training_instances):
             self.word_counts.update([get_desc(inst)])
             desc = get_desc(inst).split()
-            if get_color(inst):
-                (hue, sat, val) = get_color(inst)
-            else:
+            color = get_color(inst)
+            if not color:
                 assert test
-                hue = sat = val = 0.0
-            color_0_1 = colorsys.hsv_to_rgb(hue / 360.0, sat / 100.0, val / 100.0)
-            assert all(0.0 <= d <= 1.0 for d in color_0_1), (get_color(inst), color_0_1)
-            color = tuple(min(d * 256, 255) for d in color_0_1)
+                color = (0.0, 0.0, 0.0)
             s = ['<s>'] * (self.seq_vec.max_len - 1 - len(desc)) + desc
             s.append('</s>')
             if options.verbosity >= 9:
@@ -143,7 +145,7 @@ class ListenerLearner(NeuralLearner):
         y = np.zeros((len(sentences),), dtype=np.int32)
         for i, sentence in enumerate(sentences):
             x[i, :] = self.seq_vec.vectorize(sentence)
-            y[i] = self.color_vec.vectorize(colors[i])
+            y[i] = self.color_vec.vectorize(colors[i], hsv=True)
 
         return [x], [y]
 

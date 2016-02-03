@@ -1,4 +1,3 @@
-import colorsys
 import numpy as np
 import theano.tensor as T
 from theano.tensor.nnet import crossentropy_categorical_1hot
@@ -31,6 +30,11 @@ parser.add_argument('--speaker_dropout', type=float, default=0.2,
 parser.add_argument('--speaker_color_resolution', type=int, default=4,
                     help='The number of buckets along each dimension of color space '
                          'for the input of the speaker model.')
+parser.add_argument('--speaker_hsv', action='store_true',
+                    help='If True, input color buckets are in HSV space; otherwise, '
+                         'color buckets will be in RGB. Input instances should be in HSV '
+                         'regardless; this sets the internal representation for training '
+                         'and prediction.')
 parser.add_argument('--speaker_eval_batch_size', type=int, default=16384,
                     help='The number of examples per batch for evaluating the speaker '
                          'model. Higher means faster but more memory usage. This should '
@@ -59,7 +63,8 @@ class SpeakerLearner(NeuralLearner):
     '''
     def __init__(self, id=None):
         options = config.options()
-        super(SpeakerLearner, self).__init__(options.speaker_color_resolution, id=id)
+        super(SpeakerLearner, self).__init__(options.speaker_color_resolution,
+                                             options.speaker_hsv, id=id)
 
     def predict(self, eval_instances, random=False, verbosity=0):
         options = config.options()
@@ -143,9 +148,7 @@ class SpeakerLearner(NeuralLearner):
         previous = []
         next_tokens = []
         for i, inst in enumerate(training_instances):
-            desc, (hue, sat, val) = get_desc(inst), get_color(inst)
-            color_0_1 = colorsys.hsv_to_rgb(hue / 360.0, sat / 100.0, val / 100.0)
-            color = tuple(min(d * 256, 255) for d in color_0_1)
+            desc, color = get_desc(inst), get_color(inst)
             if test:
                 full = ['<s>'] + ['<MASK>'] * (self.seq_vec.max_len - 2)
             else:
@@ -164,7 +167,7 @@ class SpeakerLearner(NeuralLearner):
         P = np.zeros((len(previous), self.seq_vec.max_len - 1), dtype=np.int32)
         mask = np.zeros((len(previous), self.seq_vec.max_len - 1), dtype=np.int32)
         N = np.zeros((len(next_tokens), self.seq_vec.max_len - 1), dtype=np.int32)
-        c[:] = self.color_vec.vectorize_all(colors)
+        c[:] = self.color_vec.vectorize_all(colors, hsv=True)
         for i, (color, prev, next) in enumerate(zip(colors, previous, next_tokens)):
             if len(prev) > P.shape[1]:
                 prev = prev[:P.shape[1]]
@@ -313,7 +316,8 @@ class AtomicSpeakerLearner(NeuralLearner):
     '''
     def __init__(self, id=None):
         options = config.options()
-        super(AtomicSpeakerLearner, self).__init__(options.speaker_color_resolution, id=id)
+        super(AtomicSpeakerLearner, self).__init__(options.speaker_color_resolution,
+                                                   options.speaker_hsv, id=id)
         self.seq_vec = SymbolVectorizer()
 
     def predict_and_score(self, eval_instances, random=False, verbosity=0):
@@ -359,14 +363,11 @@ class AtomicSpeakerLearner(NeuralLearner):
         colors = []
         for i, inst in enumerate(training_instances):
             desc = get_desc(inst)
-            if get_color(inst):
-                (hue, sat, val) = get_color(inst)
-            else:
+            if desc is None:
                 assert test
-                hue = sat = val = 0.0
-            color_0_1 = colorsys.hsv_to_rgb(hue / 360.0, sat / 100.0, val / 100.0)
-            assert all(0.0 <= d <= 1.0 for d in color_0_1), (get_color(inst), color_0_1)
-            color = tuple(min(d * 256, 255) for d in color_0_1)
+                desc = '<unk>'
+            color = get_color(inst)
+            assert color
             if options.verbosity >= 9:
                 print('%s -> %s' % (repr(desc), repr(color)))
             sentences.append(desc)
@@ -375,7 +376,7 @@ class AtomicSpeakerLearner(NeuralLearner):
         x = np.zeros((len(sentences),), dtype=np.int32)
         y = np.zeros((len(sentences),), dtype=np.int32)
         for i, sentence in enumerate(sentences):
-            x[i] = self.color_vec.vectorize(colors[i])
+            x[i] = self.color_vec.vectorize(colors[i], hsv=True)
             y[i] = self.seq_vec.vectorize(sentence)
 
         return [x], [y]
