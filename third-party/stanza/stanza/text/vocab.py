@@ -37,6 +37,18 @@ class Vocab(object):
     def __iter__(self):
         return iter(self._word2index)
 
+    def iteritems(self):
+        return self._word2index.iteritems()
+
+    def items(self):
+        return self._word2index.items()
+
+    def keys(self):
+        return self._word2index.keys()
+
+    def iterkeys(self):
+        return self._word2index.iterkeys()
+
     def __repr__(self):
         """Represent Vocab as a dictionary from words to indices."""
         return str(self._word2index)
