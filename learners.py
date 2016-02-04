@@ -3,7 +3,7 @@ import numpy as np
 
 from stanza.unstable.learner import Learner
 from stanza.unstable import progress
-from listener import ListenerLearner
+from listener import ListenerLearner, AtomicListenerLearner
 from speaker import SpeakerLearner, AtomicSpeakerLearner
 from rsa import RSALearner
 
@@ -213,6 +213,7 @@ class RandomListenerLearner(Learner):
 LEARNERS = {
     'Histogram': HistogramLearner,
     'Listener': ListenerLearner,
+    'AtomicListener': AtomicListenerLearner,
     'Speaker': SpeakerLearner,
     'AtomicSpeaker': AtomicSpeakerLearner,
     'RSA': RSALearner,

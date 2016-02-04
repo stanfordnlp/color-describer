@@ -10,7 +10,7 @@ from lasagne.nonlinearities import softmax
 from lasagne.updates import rmsprop
 
 from stanza.unstable import config, instance, progress, iterators
-from neural import NeuralLearner, SimpleLasagneModel, NONLINEARITIES
+from neural import NeuralLearner, SimpleLasagneModel, NONLINEARITIES, SymbolVectorizer
 
 parser = config.get_options_parser()
 parser.add_argument('--listener_cell_size', type=int, default=20,
@@ -200,6 +200,88 @@ class ListenerLearner(NeuralLearner):
                                          name=id_tag + 'hidden_drop')
         else:
             l_hidden_drop = l_hidden
+        l_scores = DenseLayer(l_hidden_drop, num_units=self.color_vec.num_types, nonlinearity=None,
+                              name=id_tag + 'scores')
+        l_out = NonlinearityLayer(l_scores, nonlinearity=softmax, name=id_tag + 'out')
+
+        return l_out, [l_in]
+
+
+class AtomicListenerLearner(ListenerLearner):
+    '''
+    An single-embedding listener (guesses colors from descriptions, where
+    the descriptions are treated as indivisible symbols).
+    '''
+    def __init__(self, id=None):
+        super(AtomicListenerLearner, self).__init__(id=id)
+        self.seq_vec = SymbolVectorizer()
+
+    def _data_to_arrays(self, training_instances,
+                        init_vectorizer=False, test=False, inverted=False):
+        options = config.options()
+
+        get_i, get_o = (lambda inst: inst.input), (lambda inst: inst.output)
+        get_desc, get_color = (get_o, get_i) if inverted else (get_i, get_o)
+
+        if init_vectorizer:
+            self.seq_vec.add_all(get_desc(inst) for inst in training_instances)
+
+        sentences = []
+        colors = []
+        for i, inst in enumerate(training_instances):
+            self.word_counts.update([get_desc(inst)])
+            desc = get_desc(inst)
+            color = get_color(inst)
+            if not color:
+                assert test
+                color = (0.0, 0.0, 0.0)
+            if options.verbosity >= 9:
+                print('%s -> %s' % (repr(desc), repr(color)))
+            sentences.append(desc)
+            colors.append(color)
+
+        x = np.zeros((len(sentences),), dtype=np.int32)
+        y = np.zeros((len(sentences),), dtype=np.int32)
+        for i, sentence in enumerate(sentences):
+            x[i] = self.seq_vec.vectorize(sentence)
+            y[i] = self.color_vec.vectorize(colors[i], hsv=True)
+
+        return [x], [y]
+
+    def _build_model(self, model_class=SimpleLasagneModel):
+        id_tag = (self.id + '/') if self.id else ''
+        input_var = T.ivector(id_tag + 'inputs')
+        target_var = T.ivector(id_tag + 'targets')
+
+        self.l_out, self.input_layers = self._get_l_out([input_var])
+        self.loss = categorical_crossentropy
+
+        self.model = model_class([input_var], [target_var], self.l_out,
+                                 loss=self.loss, optimizer=rmsprop, id=self.id)
+
+        self.prior_emp = UnigramPrior(vocab_size=len(self.seq_vec.tokens))
+        self.prior_smooth = UnigramPrior(vocab_size=len(self.seq_vec.tokens))  # TODO: smoothing
+
+    def _get_l_out(self, input_vars):
+        options = config.options()
+        id_tag = (self.id + '/') if self.id else ''
+
+        input_var = input_vars[0]
+
+        l_in = InputLayer(shape=(None,), input_var=input_var,
+                          name=id_tag + 'desc_input')
+        l_in_embed = EmbeddingLayer(l_in, input_size=len(self.seq_vec.tokens),
+                                    output_size=options.listener_cell_size,
+                                    name=id_tag + 'desc_embed')
+        l_hidden = DenseLayer(l_in_embed, num_units=options.listener_cell_size,
+                              nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
+                              name=id_tag + 'hidden')
+        if options.listener_dropout > 0.0:
+            l_hidden_drop = DropoutLayer(l_hidden, p=options.listener_dropout,
+                                         name=id_tag + 'hidden_drop')
+        else:
+            l_hidden_drop = l_hidden
+
         l_scores = DenseLayer(l_hidden_drop, num_units=self.color_vec.num_types, nonlinearity=None,
                               name=id_tag + 'scores')
         l_out = NonlinearityLayer(l_scores, nonlinearity=softmax, name=id_tag + 'out')
