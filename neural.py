@@ -515,10 +515,11 @@ class NeuralLearner(Learner):
 
     def __init__(self, color_resolution, hsv=False, id=None):
         super(NeuralLearner, self).__init__()
-        res = color_resolution
+        if len(color_resolution) == 1:
+            color_resolution = color_resolution * 3
 
         self.seq_vec = SequenceVectorizer()
-        self.color_vec = ColorVectorizer((res, res, res), hsv=hsv)
+        self.color_vec = ColorVectorizer(color_resolution, hsv=hsv)
         self.id = id
 
     def train(self, training_instances):

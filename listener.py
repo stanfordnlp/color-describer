@@ -26,7 +26,7 @@ parser.add_argument('--listener_nonlinearity', choices=NONLINEARITIES.keys(), de
 parser.add_argument('--listener_dropout', type=float, default=0.2,
                     help='The dropout rate (probability of setting a value to zero). '
                          'Dropout will be disabled if nonpositive.')
-parser.add_argument('--listener_color_resolution', type=int, default=4,
+parser.add_argument('--listener_color_resolution', type=int, nargs='+', default=[4],
                     help='The number of buckets along each dimension of color space '
                          'for the output of the listener model.')
 parser.add_argument('--listener_hsv', action='store_true',

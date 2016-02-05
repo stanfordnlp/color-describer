@@ -27,7 +27,7 @@ parser.add_argument('--speaker_nonlinearity', choices=NONLINEARITIES.keys(), def
 parser.add_argument('--speaker_dropout', type=float, default=0.2,
                     help='The dropout rate (probability of setting a value to zero). '
                          'Dropout will be disabled if nonpositive.')
-parser.add_argument('--speaker_color_resolution', type=int, default=4,
+parser.add_argument('--speaker_color_resolution', type=int, nargs='+', default=[4],
                     help='The number of buckets along each dimension of color space '
                          'for the input of the speaker model.')
 parser.add_argument('--speaker_hsv', action='store_true',
