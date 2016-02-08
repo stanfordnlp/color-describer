@@ -50,6 +50,10 @@ parser.add_argument('--monitor_sublosses', action='store_true',
 parser.add_argument('--monitor_subgrads', action='store_true',
                     help='If `True`, return sub-gradients for monitoring and write them to the '
                          'TensorBoard events file. This will likely increase compilation time.')
+parser.add_argument('--grad_of_est', action='store_true',
+                    help='If `True`, optimize using the gradient of the estimated loss; '
+                         'otherwise, use the manually-derived estimate of the gradient of '
+                         'the true loss.')
 
 
 class AggregatePrior(object):
@@ -132,13 +136,18 @@ class RSAGraphModel(SimpleLasagneModel):
         return result
 
     def get_train_loss(self, target_vars, params):
+        options = config.options()
+
         for agent in self.speakers:
             agent.model.build_sample_vars(len(self.listeners))
         for agent in self.listeners:
             agent.model.build_sample_vars(len(self.speakers))
 
         monitored = self.get_est_loss()
-        est_grad, monitored_grads = self.get_est_grad(params)
+        if options.grad_of_est:
+            est_grad, monitored_grads = self.get_grad_of_est(monitored, params)
+        else:
+            est_grad, monitored_grads = self.get_est_grad(params)
         monitored.update(monitored_grads)
         synth_vars = [v
                       for agent in self.listeners + self.speakers
@@ -304,6 +313,27 @@ class RSAGraphModel(SimpleLasagneModel):
                 for param, grad in zip(params, grads)
             ])
         return est_grad, monitored
+
+    def get_grad_of_est(self, monitored, params):
+        options = config.options()
+
+        grad_of_est = T.grad(monitored['loss'], params)
+
+        monitored_grads = OrderedDict()
+        if options.monitor_grads:
+            monitored_grads.update([
+                ('grad/' + param.name, grad)
+                for param, grad in zip(params, grad_of_est)
+            ])
+        if options.monitor_subgrads:
+            monitored_grads.update([
+                (tag + '/' + param.name, grad)
+                for tag, subloss in monitored.iteritems() if tag != 'loss'
+                for param, grad in zip(params, T.grad(subloss, params,
+                                                      disconnected_inputs='ignore'))
+            ])
+
+        return grad_of_est, monitored_grads
 
     def dyads(self):
         for j, listener in enumerate(self.listeners):
