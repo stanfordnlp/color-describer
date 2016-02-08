@@ -62,7 +62,10 @@ class UnigramPrior(object):
         token_probs = self.log_probs[x]
         if self.mask_index is not None:
             token_probs = token_probs * T.cast((x == self.mask_index), 'float32')
-        return token_probs.sum(axis=1)
+        if token_probs.ndim == 1:
+            return token_probs
+        else:
+            return token_probs.sum(axis=1)
 
 
 class ListenerLearner(NeuralLearner):
@@ -291,4 +294,5 @@ class AtomicListenerLearner(ListenerLearner):
 
 LISTENERS = {
     'Listener': ListenerLearner,
+    'AtomicListener': AtomicListenerLearner,
 }
