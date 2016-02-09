@@ -11,7 +11,8 @@ from lasagne.updates import rmsprop
 
 from stanza.unstable import config, progress, iterators
 from stanza.unstable.rng import get_rng
-from neural import NeuralLearner, SimpleLasagneModel, SymbolVectorizer, NONLINEARITIES
+from neural import NeuralLearner, SimpleLasagneModel, SymbolVectorizer
+from neural import NONLINEARITIES, OPTIMIZERS
 
 parser = config.get_options_parser()
 parser.add_argument('--speaker_cell_size', type=int, default=20,
@@ -39,6 +40,11 @@ parser.add_argument('--speaker_eval_batch_size', type=int, default=16384,
                     help='The number of examples per batch for evaluating the speaker '
                          'model. Higher means faster but more memory usage. This should '
                          'not affect modeling accuracy.')
+parser.add_argument('--speaker_optimizer', choices=OPTIMIZERS.keys(), default='rmsprop',
+                    help='The optimization (update) algorithm to use for speaker training.')
+parser.add_argument('--speaker_learning_rate', type=float, default=0.001,
+                    help='The learning rate to use for speaker training.')
+
 
 rng = get_rng()
 
@@ -182,7 +188,9 @@ class SpeakerLearner(NeuralLearner):
         return [c, P, mask], [N]
 
     def _build_model(self, model_class=SimpleLasagneModel):
+        options = config.options()
         id_tag = (self.id + '/') if self.id else ''
+
         input_vars = [T.imatrix(id_tag + 'inputs'),
                       T.imatrix(id_tag + 'previous'),
                       T.imatrix(id_tag + 'mask')]
@@ -190,7 +198,9 @@ class SpeakerLearner(NeuralLearner):
 
         self.l_out, self.input_layers = self. _get_l_out(input_vars)
         self.model = model_class(input_vars, [target_var], self.l_out, id=self.id,
-                                 loss=self.masked_loss(input_vars), optimizer=rmsprop)
+                                 loss=self.masked_loss(input_vars),
+                                 optimizer=OPTIMIZERS[options.speaker_optimizer],
+                                 learning_rate=options.speaker_learning_rate)
 
         self.prior_emp = UniformPrior()
         self.prior_smooth = UniformPrior()

@@ -38,15 +38,23 @@ parser.add_argument('--monitor_params', action='store_true',
                          'TensorBoard events file.')
 
 
-rng = get_rng()
-lasagne.random.set_rng(rng)
-
-
 NONLINEARITIES = {
     name: func
     for name, func in lasagne.nonlinearities.__dict__.iteritems()
     if name.islower() and not name.startswith('__')
 }
+del NONLINEARITIES['theano']
+
+OPTIMIZERS = {
+    name: func
+    for name, func in lasagne.updates.__dict__.iteritems()
+    if (name in lasagne.updates.__all__ and
+        not name.startswith('apply_') and not name.endswith('_constraint'))
+}
+
+
+rng = get_rng()
+lasagne.random.set_rng(rng)
 
 
 def detect_nan(i, node, fn):
@@ -362,7 +370,8 @@ class ColorVectorizer(object):
 
 
 class SimpleLasagneModel(object):
-    def __init__(self, input_vars, target_vars, l_out, loss, optimizer, id=None):
+    def __init__(self, input_vars, target_vars, l_out, loss,
+                 optimizer, learning_rate=0.001, id=None):
         options = config.options()
 
         if not isinstance(input_vars, Sequence):
@@ -383,7 +392,7 @@ class SimpleLasagneModel(object):
          train_loss_grads,
          synth_vars) = self.get_train_loss(target_vars, params)
         self.monitored_tags = monitored.keys()
-        updates = optimizer(train_loss_grads, params, learning_rate=0.001)
+        updates = optimizer(train_loss_grads, params, learning_rate=learning_rate)
         if options.detect_nans:
             mode = MonitorMode(post_func=detect_nan)
         else:

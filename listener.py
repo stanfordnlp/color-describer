@@ -10,7 +10,8 @@ from lasagne.nonlinearities import softmax
 from lasagne.updates import rmsprop
 
 from stanza.unstable import config, instance, progress, iterators
-from neural import NeuralLearner, SimpleLasagneModel, NONLINEARITIES, SymbolVectorizer
+from neural import NeuralLearner, SimpleLasagneModel, SymbolVectorizer
+from neural import NONLINEARITIES, OPTIMIZERS
 
 parser = config.get_options_parser()
 parser.add_argument('--listener_cell_size', type=int, default=20,
@@ -38,6 +39,10 @@ parser.add_argument('--listener_eval_batch_size', type=int, default=65536,
                     help='The number of examples per batch for evaluating the listener '
                          'model. Higher means faster but more memory usage. This should '
                          'not affect modeling accuracy.')
+parser.add_argument('--listener_optimizer', choices=OPTIMIZERS.keys(), default='rmsprop',
+                    help='The optimization (update) algorithm to use for listener training.')
+parser.add_argument('--listener_learning_rate', type=float, default=1.0,
+                    help='The learning rate to use for listener training.')
 
 
 class UnigramPrior(object):
@@ -152,7 +157,9 @@ class ListenerLearner(NeuralLearner):
         return [x], [y]
 
     def _build_model(self, model_class=SimpleLasagneModel):
+        options = config.options()
         id_tag = (self.id + '/') if self.id else ''
+
         input_var = T.imatrix(id_tag + 'inputs')
         target_var = T.ivector(id_tag + 'targets')
 
@@ -160,7 +167,9 @@ class ListenerLearner(NeuralLearner):
         self.loss = categorical_crossentropy
 
         self.model = model_class([input_var], [target_var], self.l_out,
-                                 loss=self.loss, optimizer=rmsprop, id=self.id)
+                                 loss=self.loss, optimizer=OPTIMIZERS[options.listener_optimizer],
+                                 learning_rate=options.listener_learning_rate,
+                                 id=self.id)
 
         self.prior_emp = UnigramPrior(vocab_size=len(self.seq_vec.tokens))
         self.prior_smooth = UnigramPrior(vocab_size=len(self.seq_vec.tokens))  # TODO: smoothing
