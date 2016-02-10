@@ -35,6 +35,9 @@ parser.add_argument('--speaker_no_mask', action='store_true',
                     help='If `True`, disable masking of LSTM inputs in training.')
 parser.add_argument('--speaker_recurrent_layers', type=int, default=2,
                     help='The number of recurrent layers to pass the input through.')
+parser.add_argument('--speaker_hidden_out_layers', type=int, default=0,
+                    help='The number of dense layers to pass activations through '
+                         'before the output.')
 parser.add_argument('--speaker_hsv', action='store_true',
                     help='If `True`, input color buckets are in HSV space; otherwise, '
                          'color buckets will be in RGB. Input instances should be in HSV '
@@ -246,13 +249,22 @@ class SpeakerLearner(NeuralLearner):
                                            name=id_tag + 'lstm%d_drop' % i)
             else:
                 l_lstm_drop = l_lstm
-        l_lstm = LSTMLayer(l_lstm_drop, num_units=len(self.seq_vec.tokens),
+        units = (options.speaker_cell_size if options.speaker_hidden_out_layers
+                 else len(self.seq_vec.tokens))
+        l_lstm = LSTMLayer(l_lstm_drop, num_units=units,
                            nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
                            forgetgate=Gate(b=Constant(options.speaker_forget_bias)),
                            name=id_tag + 'lstm%d' % options.speaker_recurrent_layers)
-        l_shape = ReshapeLayer(l_lstm, (-1, len(self.seq_vec.tokens)),
+        l_shape = ReshapeLayer(l_lstm, (-1, units),
                                name=id_tag + 'reshape')
-        l_softmax = NonlinearityLayer(l_shape, nonlinearity=softmax,
+        l_hidden_out = l_shape
+        for i in range(1, options.speaker_hidden_out_layers + 1):
+            units = (len(self.seq_vec.tokens) if i == options.speaker_hidden_out_layers
+                     else options.speaker_cell_size)
+            l_hidden_out = DenseLayer(l_hidden_out, num_units=units,
+                                      nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
+                                      name=id_tag + 'hidden_out%d' % i)
+        l_softmax = NonlinearityLayer(l_hidden_out, nonlinearity=softmax,
                                       name=id_tag + 'softmax')
         l_out = ReshapeLayer(l_softmax, (-1, self.seq_vec.max_len - 1, len(self.seq_vec.tokens)),
                              name=id_tag + 'out')
