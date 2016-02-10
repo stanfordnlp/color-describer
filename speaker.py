@@ -185,6 +185,11 @@ class SpeakerLearner(NeuralLearner):
                 mask[i, t] = (token != '<MASK>')
         c = np.tile(c[:, np.newaxis], [1, self.seq_vec.max_len - 1])
 
+        if options.verbosity >= 9:
+            print('c: %s' % (repr(c),))
+            print('P: %s' % (repr(P),))
+            print('mask: %s' % (repr(mask),))
+            print('N: %s' % (repr(N),))
         return [c, P, mask], [N]
 
     def _build_model(self, model_class=SimpleLasagneModel):
