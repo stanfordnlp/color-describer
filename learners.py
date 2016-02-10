@@ -2,9 +2,10 @@ from collections import defaultdict, Counter
 import numpy as np
 
 from stanza.unstable.learner import Learner
-from stanza.unstable import progress
+from stanza.unstable import progress, config
 from listener import ListenerLearner, AtomicListenerLearner
 from speaker import SpeakerLearner, AtomicSpeakerLearner
+from neural import ColorVectorizer
 from rsa import RSALearner
 
 
@@ -210,6 +211,100 @@ class RandomListenerLearner(Learner):
         return predict, score
 
 
+class LookupLearner(Learner):
+    def __init__(self):
+        options = config.options()
+        self.counters = defaultdict(Counter)
+        if options.listener:
+            res = options.listener_color_resolution
+            hsv = options.listener_hsv
+        else:
+            res = options.speaker_color_resolution
+            hsv = options.speaker_hsv
+        self.res = res
+        self.hsv = hsv
+        self.init_vectorizer()
+
+    def init_vectorizer(self):
+        if self.res and self.res[0]:
+            if len(self.res) == 1:
+                self.res = self.res * 3
+            self.color_vec = ColorVectorizer(self.res, hsv=self.hsv)
+            self.vectorize = lambda c: self.color_vec.vectorize(c, hsv=True)
+            self.score_adjustment = -np.log((256.0 ** 3) / self.color_vec.num_types)
+        else:
+            self.vectorize = lambda c: c
+            self.score_adjustment = 0.0
+
+    @property
+    def num_params(self):
+        return sum(len(c) for c in self.counters.values())
+
+    def train(self, training_instances):
+        options = config.options()
+        for inst in training_instances:
+            inp, out = inst.input, inst.output
+            if options.listener:
+                out = self.vectorize(out)
+            else:
+                inp = self.vectorize(inp)
+            self.counters[inp][out] += 1
+
+    def predict_and_score(self, training_instances, random='ignored', verbosity=0):
+        options = config.options()
+        if options.verbosity + verbosity >= 2:
+            print('Testing')
+        predictions = []
+        scores = []
+        for inst in training_instances:
+            inp, out = inst.input, inst.output
+            if options.listener:
+                out = self.vectorize(out)
+            else:
+                inp = self.vectorize(inp)
+
+            counter = self.counters[inp]
+            highest = counter.most_common(1)
+            if highest:
+                prediction = highest[0][0]
+            elif options.listener:
+                prediction = (0, 0, 0)
+            else:
+                prediction = '<unk>'
+
+            total = sum(counter.values())
+            if total:
+                if options.verbosity + verbosity >= 9:
+                    print('%s -> %s: %s of %s [%s]' % (repr(inp), repr(out), counter[out],
+                                                       total, inst.input))
+                prob = counter[out] * 1.0 / total
+            else:
+                if options.verbosity + verbosity >= 9:
+                    print('%s -> %s: no data [%s]' % (repr(inp), repr(out), inst.input))
+                prob = 1.0 * (inst.output == prediction)
+            score = np.log(prob)
+            if options.listener:
+                score += self.score_adjustment
+
+            predictions.append(prediction)
+            scores.append(score)
+
+        return predictions, scores
+
+    def __getstate__(self):
+        return {
+            'counters': {k: dict(v) for k, v in self.counters.iteritems()},
+            'res': self.res,
+            'hsv': self.hsv,
+        }
+
+    def __setstate__(self, state):
+        self.res = state['res']
+        self.hsv = state['hsv']
+        self.init_vectorizer()
+        self.counters = defaultdict(Counter, {k: Counter(v) for k, v in state['counters']})
+
+
 LEARNERS = {
     'Histogram': HistogramLearner,
     'Listener': ListenerLearner,
@@ -219,4 +314,5 @@ LEARNERS = {
     'RSA': RSALearner,
     'MostCommon': MostCommonSpeakerLearner,
     'Random': RandomListenerLearner,
+    'Lookup': LookupLearner,
 }
