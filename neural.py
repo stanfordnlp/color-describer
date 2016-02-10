@@ -9,6 +9,7 @@ from collections import Sequence, OrderedDict
 from lasagne.layers import get_output, get_all_params
 from matplotlib.colors import hsv_to_rgb
 from theano.compile import MonitorMode
+from theano.printing import pydotprint
 
 from stanza.unstable import config, progress, summary
 from stanza.unstable.learner import Learner
@@ -406,6 +407,7 @@ class SimpleLasagneModel(object):
         self.train_fn = theano.function(params, monitored.values(),
                                         updates=updates, mode=mode,
                                         name=id_tag + 'train', on_unused_input='warn')
+        self.visualize_graphs(monitored, self.train_fn)
 
         test_prediction = get_output(l_out, deterministic=True)
         if options.verbosity >= 2:
@@ -414,6 +416,18 @@ class SimpleLasagneModel(object):
             print('params = %s' % (input_vars,))
         self.predict_fn = theano.function(input_vars, test_prediction, mode=mode,
                                           name=id_tag + 'predict', on_unused_input='ignore')
+        self.visualize_graphs({'test_prediction': test_prediction}, self.train_fn)
+
+    def visualize_graphs(self, monitored, fn):
+        options = config.options()
+        id_tag = (self.id + '.') if self.id else ''
+
+        if options.run_dir:
+            for tag, graph in monitored.iteritems():
+                pydotprint(graph, outfile=config.get_file_path(id_tag + tag + '.svg'),
+                           format='svg', var_with_name_simple=True)
+            # pydotprint(self.train_fn, outfile=config.get_file_path(id_tag + 'train_fn.svg'),
+            #            format='svg', var_with_name_simple=True)
 
     def params(self):
         return get_all_params(self.l_out, trainable=True)
