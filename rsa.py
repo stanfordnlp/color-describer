@@ -79,8 +79,10 @@ class RSASubModel(SimpleLasagneModel):
     '''
     A SimpleLasagneModel for a subcomponent of an RSA graph.
     '''
-    def __init__(self, input_vars, target_vars, l_out, loss, optimizer, id=None):
-        super(RSASubModel, self).__init__(input_vars, target_vars, l_out, loss, optimizer, id)
+    def __init__(self, input_vars, target_vars, l_out, loss, optimizer,
+                 learning_rate=0.001, id=None):
+        super(RSASubModel, self).__init__(input_vars, target_vars, l_out, loss, optimizer,
+                                          learning_rate=learning_rate, id=id)
         if len(target_vars) != 1:
             raise ValueError('target_vars should be a sequence of length 1, instead got %s' %
                              (target_vars,))
