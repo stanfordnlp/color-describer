@@ -33,6 +33,8 @@ parser.add_argument('--speaker_color_resolution', type=int, nargs='+', default=[
                          'for the input of the speaker model.')
 parser.add_argument('--speaker_no_mask', action='store_true',
                     help='If `True`, disable masking of LSTM inputs in training.')
+parser.add_argument('--speaker_recurrent_layers', type=int, default=2,
+                    help='The number of recurrent layers to pass the input through.')
 parser.add_argument('--speaker_hsv', action='store_true',
                     help='If `True`, input color buckets are in HSV space; otherwise, '
                          'color buckets will be in RGB. Input instances should be in HSV '
@@ -232,21 +234,23 @@ class SpeakerLearner(NeuralLearner):
         l_in = ConcatLayer([l_color_embed, l_prev_embed], axis=2, name=id_tag + 'color_prev')
         l_mask_in = InputLayer(shape=(None, self.seq_vec.max_len - 1),
                                input_var=mask_var, name=id_tag + 'mask_input')
-        l_lstm1 = LSTMLayer(l_in, num_units=options.speaker_cell_size,
-                            mask_input=(None if options.speaker_no_mask else l_mask_in),
-                            nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
-                            forgetgate=Gate(b=Constant(options.speaker_forget_bias)),
-                            name=id_tag + 'lstm1')
-        if options.speaker_dropout > 0.0:
-            l_lstm1_drop = DropoutLayer(l_lstm1, p=options.speaker_dropout,
-                                        name=id_tag + 'lstm1_drop')
-        else:
-            l_lstm1_drop = l_lstm1
-        l_lstm2 = LSTMLayer(l_lstm1_drop, num_units=len(self.seq_vec.tokens),
-                            nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
-                            forgetgate=Gate(b=Constant(options.speaker_forget_bias)),
-                            name=id_tag + 'lstm2')
-        l_shape = ReshapeLayer(l_lstm2, (-1, len(self.seq_vec.tokens)),
+        l_lstm_drop = l_in
+        for i in range(1, options.speaker_recurrent_layers):
+            l_lstm = LSTMLayer(l_lstm_drop, num_units=options.speaker_cell_size,
+                               mask_input=(None if options.speaker_no_mask else l_mask_in),
+                               nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
+                               forgetgate=Gate(b=Constant(options.speaker_forget_bias)),
+                               name=id_tag + 'lstm%d' % i)
+            if options.speaker_dropout > 0.0:
+                l_lstm_drop = DropoutLayer(l_lstm, p=options.speaker_dropout,
+                                           name=id_tag + 'lstm%d_drop' % i)
+            else:
+                l_lstm_drop = l_lstm
+        l_lstm = LSTMLayer(l_lstm_drop, num_units=len(self.seq_vec.tokens),
+                           nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
+                           forgetgate=Gate(b=Constant(options.speaker_forget_bias)),
+                           name=id_tag + 'lstm%d' % options.speaker_recurrent_layers)
+        l_shape = ReshapeLayer(l_lstm, (-1, len(self.seq_vec.tokens)),
                                name=id_tag + 'reshape')
         l_softmax = NonlinearityLayer(l_shape, nonlinearity=softmax,
                                       name=id_tag + 'softmax')
