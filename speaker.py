@@ -31,8 +31,10 @@ parser.add_argument('--speaker_dropout', type=float, default=0.2,
 parser.add_argument('--speaker_color_resolution', type=int, nargs='+', default=[4],
                     help='The number of buckets along each dimension of color space '
                          'for the input of the speaker model.')
+parser.add_argument('--speaker_no_mask', action='store_true',
+                    help='If `True`, disable masking of LSTM inputs in training.')
 parser.add_argument('--speaker_hsv', action='store_true',
-                    help='If True, input color buckets are in HSV space; otherwise, '
+                    help='If `True`, input color buckets are in HSV space; otherwise, '
                          'color buckets will be in RGB. Input instances should be in HSV '
                          'regardless; this sets the internal representation for training '
                          'and prediction.')
@@ -230,7 +232,8 @@ class SpeakerLearner(NeuralLearner):
         l_in = ConcatLayer([l_color_embed, l_prev_embed], axis=2, name=id_tag + 'color_prev')
         l_mask_in = InputLayer(shape=(None, self.seq_vec.max_len - 1),
                                input_var=mask_var, name=id_tag + 'mask_input')
-        l_lstm1 = LSTMLayer(l_in, mask_input=l_mask_in, num_units=options.speaker_cell_size,
+        l_lstm1 = LSTMLayer(l_in, num_units=options.speaker_cell_size,
+                            mask_input=(None if options.speaker_no_mask else l_mask_in),
                             nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
                             forgetgate=Gate(b=Constant(options.speaker_forget_bias)),
                             name=id_tag + 'lstm1')
