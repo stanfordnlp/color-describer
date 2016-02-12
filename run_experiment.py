@@ -30,6 +30,8 @@ parser.add_argument('--train_size', type=int, default=None,
 parser.add_argument('--test_size', type=int, default=None,
                     help='The number of examples to use in testing. '
                          'If None, use the whole dev/test set.')
+parser.add_argument('--data_source', default='dev', choices=color_instances.SOURCES.keys(),
+                    help='The type of data to use.')
 parser.add_argument('--output_train_data', action='store_true',
                     help='If True, write out the training dataset (after cutting down to '
                          '`train_size`) as a JSON-lines file in the output directory.')
@@ -48,10 +50,12 @@ def main():
 
     progress.set_resolution(datetime.timedelta(seconds=options.progress_tick))
 
-    train_data = color_instances.get_training_instances(
+    train_data = color_instances.SOURCES[options.data_source].train_data(
         listener=options.listener
     )[:options.train_size]
-    dev_data = color_instances.get_dev_instances(options.listener)[:options.test_size]
+    test_data = color_instances.SOURCES[options.data_source].test_data(
+        options.listener
+    )[:options.test_size]
 
     learner = learners.new(options.learner)
 
@@ -76,9 +80,9 @@ def main():
                                           write_data=options.output_train_data)
         output.output_results(train_results, 'train')
 
-    dev_results = evaluate.evaluate(learner, dev_data, metrics=m, split_id='dev',
-                                    write_data=options.output_test_data)
-    output.output_results(dev_results, 'dev')
+    test_results = evaluate.evaluate(learner, test_data, metrics=m, split_id='dev',
+                                     write_data=options.output_test_data)
+    output.output_results(test_results, 'dev')
 
 
 if __name__ == '__main__':

@@ -1,3 +1,5 @@
+from collections import namedtuple
+
 try:
     from rugstk.data.munroecorpus import munroecorpus
 except ImportError:
@@ -49,3 +51,21 @@ def get_dev_instances(listener=False):
     ]
     rng.shuffle(insts)
     return insts
+
+
+def one_word(listener=False):
+    data = [('green', (167.74193548404, 96.3730569948, 75.6862745098))]
+    return [
+        (Instance(input=name, output=color)
+         if listener else
+         Instance(input=color, output=name))
+        for name, color in data
+    ]
+
+
+DataSource = namedtuple('DataSource', ['train_data', 'test_data'])
+
+SOURCES = {
+    'dev': DataSource(get_training_instances, get_dev_instances),
+    '1word': DataSource(one_word, one_word),
+}
