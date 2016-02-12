@@ -264,8 +264,8 @@ class SpeakerLearner(NeuralLearner):
             l_hidden_out = DenseLayer(l_hidden_out, num_units=units,
                                       nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
                                       name=id_tag + 'hidden_out%d' % i)
-        l_softmax = NonlinearityLayer(l_hidden_out, nonlinearity=softmax,
-                                      name=id_tag + 'softmax')
+        l_softmax = DenseLayer(l_hidden_out, num_units=len(self.seq_vec.tokens),
+                               nonlinearity=softmax, name=id_tag + 'softmax')
         l_out = ReshapeLayer(l_softmax, (-1, self.seq_vec.max_len - 1, len(self.seq_vec.tokens)),
                              name=id_tag + 'out')
 
