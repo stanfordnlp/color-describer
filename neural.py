@@ -407,7 +407,7 @@ class SimpleLasagneModel(object):
         self.train_fn = theano.function(params, monitored.values(),
                                         updates=updates, mode=mode,
                                         name=id_tag + 'train', on_unused_input='warn')
-        self.visualize_graphs(monitored, self.train_fn)
+        self.visualize_graphs({'loss': monitored['loss']})
 
         test_prediction = get_output(l_out, deterministic=True)
         if options.verbosity >= 2:
@@ -416,18 +416,17 @@ class SimpleLasagneModel(object):
             print('params = %s' % (input_vars,))
         self.predict_fn = theano.function(input_vars, test_prediction, mode=mode,
                                           name=id_tag + 'predict', on_unused_input='ignore')
-        self.visualize_graphs({'test_prediction': test_prediction}, self.train_fn)
+        self.visualize_graphs({'test_prediction': test_prediction})
 
-    def visualize_graphs(self, monitored, fn):
+    def visualize_graphs(self, monitored):
         options = config.options()
         id_tag = (self.id + '.') if self.id else ''
 
         if options.run_dir:
             for tag, graph in monitored.iteritems():
+                tag = tag.replace('/', '.')
                 pydotprint(graph, outfile=config.get_file_path(id_tag + tag + '.svg'),
                            format='svg', var_with_name_simple=True)
-            # pydotprint(self.train_fn, outfile=config.get_file_path(id_tag + 'train_fn.svg'),
-            #            format='svg', var_with_name_simple=True)
 
     def params(self):
         return get_all_params(self.l_out, trainable=True)
