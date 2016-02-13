@@ -249,19 +249,15 @@ class SpeakerLearner(NeuralLearner):
                                            name=id_tag + 'lstm%d_drop' % i)
             else:
                 l_lstm_drop = l_lstm
-        units = (options.speaker_cell_size if options.speaker_hidden_out_layers
-                 else len(self.seq_vec.tokens))
-        l_lstm = LSTMLayer(l_lstm_drop, num_units=units,
+        l_lstm = LSTMLayer(l_lstm_drop, num_units=options.speaker_cell_size,
                            nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
                            forgetgate=Gate(b=Constant(options.speaker_forget_bias)),
                            name=id_tag + 'lstm%d' % options.speaker_recurrent_layers)
-        l_shape = ReshapeLayer(l_lstm, (-1, units),
+        l_shape = ReshapeLayer(l_lstm, (-1, options.speaker_cell_size),
                                name=id_tag + 'reshape')
         l_hidden_out = l_shape
         for i in range(1, options.speaker_hidden_out_layers + 1):
-            units = (len(self.seq_vec.tokens) if i == options.speaker_hidden_out_layers
-                     else options.speaker_cell_size)
-            l_hidden_out = DenseLayer(l_hidden_out, num_units=units,
+            l_hidden_out = DenseLayer(l_hidden_out, num_units=options.speaker_cell_size,
                                       nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
                                       name=id_tag + 'hidden_out%d' % i)
         l_softmax = DenseLayer(l_hidden_out, num_units=len(self.seq_vec.tokens),
