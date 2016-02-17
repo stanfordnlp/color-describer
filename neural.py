@@ -32,6 +32,9 @@ parser.add_argument('--verbosity', type=int, default=4,
                          '6-7: plus parameter names for each function compilation; '
                          '8: plus shapes and types for each compiled function call; '
                          '9-10: plus vectorization of all datasets')
+parser.add_argument('--no_graphviz', action='store_true',
+                    help='If `True`, do not use theano.printing.pydotprint to visualize '
+                         'function graphs.')
 parser.add_argument('--monitor_grads', action='store_true',
                     help='If `True`, return gradients for monitoring and write them to the '
                          'TensorBoard events file.')
@@ -433,7 +436,7 @@ class SimpleLasagneModel(object):
         options = config.options()
         id_tag = (self.id + '.') if self.id else ''
 
-        if options.run_dir:
+        if options.run_dir and not options.no_graphviz:
             for tag, graph in monitored.iteritems():
                 tag = tag.replace('/', '.')
                 pydotprint(graph, outfile=config.get_file_path(id_tag + tag + '.svg'),
