@@ -43,6 +43,9 @@ parser.add_argument('--listener_optimizer', choices=OPTIMIZERS.keys(), default='
                     help='The optimization (update) algorithm to use for listener training.')
 parser.add_argument('--listener_learning_rate', type=float, default=1.0,
                     help='The learning rate to use for listener training.')
+parser.add_argument('--listener_grad_clipping', type=float, default=0.0,
+                    help='The maximum absolute value of the gradient messages for the'
+                         'LSTM component of the listener model.')
 
 
 class UnigramPrior(object):
@@ -188,6 +191,7 @@ class ListenerLearner(NeuralLearner):
         l_lstm1 = LSTMLayer(l_in_embed, num_units=options.listener_cell_size,
                             nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
                             forgetgate=Gate(b=Constant(options.listener_forget_bias)),
+                            grad_clipping=options.listener_grad_clipping,
                             name=id_tag + 'lstm1')
         if options.listener_dropout > 0.0:
             l_lstm1_drop = DropoutLayer(l_lstm1, p=options.listener_dropout,
@@ -197,6 +201,7 @@ class ListenerLearner(NeuralLearner):
         l_lstm2 = LSTMLayer(l_lstm1_drop, num_units=options.listener_cell_size,
                             nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
                             forgetgate=Gate(b=Constant(options.listener_forget_bias)),
+                            grad_clipping=options.listener_grad_clipping,
                             name=id_tag + 'lstm2')
         if options.listener_dropout > 0.0:
             l_lstm2_drop = DropoutLayer(l_lstm2, p=options.listener_dropout,

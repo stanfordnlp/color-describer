@@ -7,6 +7,7 @@ import theano.tensor as T
 import time
 from collections import Sequence, OrderedDict
 from lasagne.layers import get_output, get_all_params
+from lasagne.updates import total_norm_constraint
 from matplotlib.colors import hsv_to_rgb
 from theano.compile import MonitorMode
 from theano.printing import pydotprint
@@ -37,6 +38,10 @@ parser.add_argument('--monitor_grads', action='store_true',
 parser.add_argument('--monitor_params', action='store_true',
                     help='If `True`, write parameter value histograms out to the '
                          'TensorBoard events file.')
+parser.add_argument('--true_grad_clipping', type=float, default=0.0,
+                    help='The maximum absolute value of all gradients. This gradient '
+                         'clipping is performed on the full gradient calculation, not '
+                         'just the messages passing through the LSTM.')
 
 
 NONLINEARITIES = {
@@ -393,7 +398,13 @@ class SimpleLasagneModel(object):
          train_loss_grads,
          synth_vars) = self.get_train_loss(target_vars, params)
         self.monitored_tags = monitored.keys()
-        updates = optimizer(train_loss_grads, params, learning_rate=learning_rate)
+
+        if options.true_grad_clipping:
+            scaled_grads = total_norm_constraint(train_loss_grads, options.true_grad_clipping)
+        else:
+            scaled_grads = train_loss_grads
+
+        updates = optimizer(scaled_grads, params, learning_rate=learning_rate)
         if options.detect_nans:
             mode = MonitorMode(post_func=detect_nan)
         else:

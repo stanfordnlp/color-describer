@@ -51,6 +51,9 @@ parser.add_argument('--speaker_optimizer', choices=OPTIMIZERS.keys(), default='r
                     help='The optimization (update) algorithm to use for speaker training.')
 parser.add_argument('--speaker_learning_rate', type=float, default=0.001,
                     help='The learning rate to use for speaker training.')
+parser.add_argument('--speaker_grad_clipping', type=float, default=0.0,
+                    help='The maximum absolute value of the gradient messages for the'
+                         'LSTM component of the speaker model.')
 
 
 rng = get_rng()
@@ -243,6 +246,7 @@ class SpeakerLearner(NeuralLearner):
                                mask_input=(None if options.speaker_no_mask else l_mask_in),
                                nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
                                forgetgate=Gate(b=Constant(options.speaker_forget_bias)),
+                               grad_clipping=options.speaker_grad_clipping,
                                name=id_tag + 'lstm%d' % i)
             if options.speaker_dropout > 0.0:
                 l_lstm_drop = DropoutLayer(l_lstm, p=options.speaker_dropout,
@@ -252,6 +256,7 @@ class SpeakerLearner(NeuralLearner):
         l_lstm = LSTMLayer(l_lstm_drop, num_units=options.speaker_cell_size,
                            nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
                            forgetgate=Gate(b=Constant(options.speaker_forget_bias)),
+                           grad_clipping=options.speaker_grad_clipping,
                            name=id_tag + 'lstm%d' % options.speaker_recurrent_layers)
         l_shape = ReshapeLayer(l_lstm, (-1, options.speaker_cell_size),
                                name=id_tag + 'reshape')
