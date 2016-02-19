@@ -4,6 +4,7 @@ import numpy as np
 import operator
 import theano
 import theano.tensor as T
+import theano.sandbox.cuda.basic_ops as G
 import time
 from collections import Sequence, OrderedDict
 from lasagne.layers import get_output, get_all_params
@@ -67,7 +68,8 @@ lasagne.random.set_rng(rng)
 
 
 def detect_nan(i, node, fn):
-    if not isinstance(node.op, T.AllocEmpty):
+    if not isinstance(node.op, (T.AllocEmpty, T.IncSubtensor,
+                                G.GpuAllocEmpty, G.GpuIncSubtensor)):
         for output in fn.outputs:
             if (not isinstance(output[0], np.random.RandomState) and
                     not np.isfinite(output[0]).all()):
