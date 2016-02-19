@@ -189,14 +189,14 @@ class RSAGraphModel(SimpleLasagneModel):
         if options.verbosity >= 4:
             print(id_tag_log + 'loss: KL(L || S)')
         mu_losses = [
-            ('%smu_%s_%s' % (id_tag, listener.id, speaker.id), mu * kl(listener, speaker, k))
+            ('%smu_%s_%s' % (id_tag, listener.id, speaker.id), mu * kl(listener, speaker, j))
             for mu, (listener, j, speaker, k) in zip(options.rsa_mu, self.dyads())
         ]
         # \nu * KL(S || L)
         if options.verbosity >= 4:
             print(id_tag_log + 'loss: KL(S || L)')
         nu_losses = [
-            ('%snu_%s_%s' % (id_tag, speaker.id, listener.id), nu * kl(speaker, listener, j))
+            ('%snu_%s_%s' % (id_tag, speaker.id, listener.id), nu * kl(speaker, listener, k))
             for nu, (listener, j, speaker, k) in zip(options.rsa_nu, self.dyads())
         ]
 
