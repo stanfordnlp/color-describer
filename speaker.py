@@ -3,7 +3,7 @@ import theano.tensor as T
 from theano.tensor.nnet import crossentropy_categorical_1hot
 from lasagne.layers import InputLayer, DropoutLayer, EmbeddingLayer, NonlinearityLayer
 from lasagne.layers import ConcatLayer, ReshapeLayer, DenseLayer, get_output
-from lasagne.layers.recurrent import LSTMLayer, Gate
+from lasagne.layers.recurrent import Gate
 from lasagne.init import Constant
 from lasagne.nonlinearities import softmax
 from lasagne.objectives import categorical_crossentropy
@@ -12,7 +12,7 @@ from lasagne.updates import rmsprop
 from stanza.unstable import config, progress, iterators
 from stanza.unstable.rng import get_rng
 from neural import NeuralLearner, SimpleLasagneModel, SymbolVectorizer
-from neural import NONLINEARITIES, OPTIMIZERS
+from neural import NONLINEARITIES, OPTIMIZERS, CELLS
 
 parser = config.get_options_parser()
 parser.add_argument('--speaker_cell_size', type=int, default=20,
@@ -21,10 +21,13 @@ parser.add_argument('--speaker_cell_size', type=int, default=20,
 parser.add_argument('--speaker_forget_bias', type=float, default=5.0,
                     help='The initial value of the forget gate bias in LSTM cells in '
                          'the speaker model. A positive initial forget gate bias '
-                         'encourages the model to remember everything by default.')
+                         'encourages the model to remember everything by default. '
+                         'If speaker_cell is not LSTM, this value is ignored.')
 parser.add_argument('--speaker_nonlinearity', choices=NONLINEARITIES.keys(), default='rectify',
                     help='The nonlinearity/activation function to use for dense and '
-                         'LSTM layers in the speaker model.')
+                         'recurrent layers in the speaker model.')
+parser.add_argument('--speaker_cell', choices=CELLS.keys(), default='LSTM',
+                    help='The recurrent cell to use for the speaker model.')
 parser.add_argument('--speaker_dropout', type=float, default=0.2,
                     help='The dropout rate (probability of setting a value to zero). '
                          'Dropout will be disabled if nonpositive.')
@@ -32,7 +35,7 @@ parser.add_argument('--speaker_color_resolution', type=int, nargs='+', default=[
                     help='The number of buckets along each dimension of color space '
                          'for the input of the speaker model.')
 parser.add_argument('--speaker_no_mask', action='store_true',
-                    help='If `True`, disable masking of LSTM inputs in training.')
+                    help='If `True`, disable masking of sequence inputs in training.')
 parser.add_argument('--speaker_recurrent_layers', type=int, default=2,
                     help='The number of recurrent layers to pass the input through.')
 parser.add_argument('--speaker_hidden_out_layers', type=int, default=0,
@@ -53,7 +56,7 @@ parser.add_argument('--speaker_learning_rate', type=float, default=0.001,
                     help='The learning rate to use for speaker training.')
 parser.add_argument('--speaker_grad_clipping', type=float, default=0.0,
                     help='The maximum absolute value of the gradient messages for the'
-                         'LSTM component of the speaker model.')
+                         'cell component of the speaker model.')
 
 
 rng = get_rng()
@@ -74,7 +77,7 @@ class UniformPrior(object):
 
 class SpeakerLearner(NeuralLearner):
     '''
-    An speaker with a feedforward neural net color input passed into an LSTM
+    An speaker with a feedforward neural net color input passed into an RNN
     to generate a description.
     '''
     def __init__(self, id=None):
@@ -240,25 +243,29 @@ class SpeakerLearner(NeuralLearner):
         l_in = ConcatLayer([l_color_embed, l_prev_embed], axis=2, name=id_tag + 'color_prev')
         l_mask_in = InputLayer(shape=(None, self.seq_vec.max_len - 1),
                                input_var=mask_var, name=id_tag + 'mask_input')
-        l_lstm_drop = l_in
+        l_rec_drop = l_in
+
+        cell = CELLS[options.speaker_cell]
+        cell_kwargs = {
+            'mask_input': (None if options.speaker_no_mask else l_mask_in),
+            'grad_clipping': options.speaker_grad_clipping,
+            'num_units': options.speaker_cell_size,
+        }
+        if options.speaker_cell == 'LSTM':
+            cell_kwargs['forgetgate'] = Gate(b=Constant(options.speaker_forget_bias))
+        if options.speaker_cell != 'GRU':
+            cell_kwargs['nonlinearity'] = NONLINEARITIES[options.speaker_nonlinearity]
+
         for i in range(1, options.speaker_recurrent_layers):
-            l_lstm = LSTMLayer(l_lstm_drop, num_units=options.speaker_cell_size,
-                               mask_input=(None if options.speaker_no_mask else l_mask_in),
-                               nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
-                               forgetgate=Gate(b=Constant(options.speaker_forget_bias)),
-                               grad_clipping=options.speaker_grad_clipping,
-                               name=id_tag + 'lstm%d' % i)
+            l_rec = cell(l_rec_drop, name=id_tag + 'rec%d' % i, **cell_kwargs)
             if options.speaker_dropout > 0.0:
-                l_lstm_drop = DropoutLayer(l_lstm, p=options.speaker_dropout,
-                                           name=id_tag + 'lstm%d_drop' % i)
+                l_rec_drop = DropoutLayer(l_rec, p=options.speaker_dropout,
+                                          name=id_tag + 'rec%d_drop' % i)
             else:
-                l_lstm_drop = l_lstm
-        l_lstm = LSTMLayer(l_lstm_drop, num_units=options.speaker_cell_size,
-                           nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
-                           forgetgate=Gate(b=Constant(options.speaker_forget_bias)),
-                           grad_clipping=options.speaker_grad_clipping,
-                           name=id_tag + 'lstm%d' % options.speaker_recurrent_layers)
-        l_shape = ReshapeLayer(l_lstm, (-1, options.speaker_cell_size),
+                l_rec_drop = l_rec
+        l_rec = cell(l_rec_drop, name=id_tag + 'rec%d' % options.speaker_recurrent_layers,
+                     **cell_kwargs)
+        l_shape = ReshapeLayer(l_rec, (-1, options.speaker_cell_size),
                                name=id_tag + 'reshape')
         l_hidden_out = l_shape
         for i in range(1, options.speaker_hidden_out_layers + 1):

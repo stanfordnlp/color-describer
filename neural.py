@@ -62,6 +62,12 @@ OPTIMIZERS = {
         not name.startswith('apply_') and not name.endswith('_constraint'))
 }
 
+CELLS = {
+    name[:-len('Layer')]: func
+    for name, func in lasagne.layers.recurrent.__dict__.iteritems()
+    if (name in lasagne.layers.recurrent.__all__ and name.endswith('Layer') and
+        name != 'CustomRecurrentLayer')
+}
 
 rng = get_rng()
 lasagne.random.set_rng(rng)

@@ -54,14 +54,18 @@ class TestModels(TestCase):
     def test_speaker(self):
         self.run_speaker(SpeakerLearner)
 
+    def test_speaker_gru(self):
+        self.run_speaker(SpeakerLearner, 'GRU')
+
     def test_atomic_speaker(self):
         self.run_speaker(AtomicSpeakerLearner)
 
-    def run_speaker(self, speaker_class):
+    def run_speaker(self, speaker_class, cell='LSTM'):
         sys.argv = []
         options = config.options()
         options.train_iters = 2
         options.train_epochs = 3
+        options.speaker_cell = cell
 
         mo = MockOpen(TEST_DIR)
         mgfp = mock_get_file_path(TEST_DIR)
@@ -92,10 +96,17 @@ class TestModels(TestCase):
                 self.assertIsInstance(v.simple_value, float)
 
     def test_listener(self):
+        self.run_listener()
+
+    def test_listener_gru(self):
+        self.run_listener('GRU')
+
+    def run_listener(self, cell='LSTM'):
         sys.argv = []
         options = config.options()
         options.train_iters = 2
         options.train_epochs = 3
+        options.listener_cell = cell
 
         mo = MockOpen(TEST_DIR)
         mgfp = mock_get_file_path(TEST_DIR)

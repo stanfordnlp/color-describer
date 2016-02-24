@@ -3,7 +3,7 @@ import theano
 import theano.tensor as T
 from collections import Counter
 from lasagne.layers import InputLayer, DropoutLayer, DenseLayer, EmbeddingLayer, NonlinearityLayer
-from lasagne.layers.recurrent import LSTMLayer, Gate
+from lasagne.layers.recurrent import Gate
 from lasagne.init import Constant
 from lasagne.objectives import categorical_crossentropy
 from lasagne.nonlinearities import softmax
@@ -11,7 +11,7 @@ from lasagne.updates import rmsprop
 
 from stanza.unstable import config, instance, progress, iterators
 from neural import NeuralLearner, SimpleLasagneModel, SymbolVectorizer
-from neural import NONLINEARITIES, OPTIMIZERS
+from neural import NONLINEARITIES, OPTIMIZERS, CELLS
 
 parser = config.get_options_parser()
 parser.add_argument('--listener_cell_size', type=int, default=20,
@@ -24,6 +24,8 @@ parser.add_argument('--listener_forget_bias', type=float, default=5.0,
 parser.add_argument('--listener_nonlinearity', choices=NONLINEARITIES.keys(), default='rectify',
                     help='The nonlinearity/activation function to use for dense and '
                          'LSTM layers in the listener model.')
+parser.add_argument('--listener_cell', choices=CELLS.keys(), default='LSTM',
+                    help='The recurrent cell to use for the listener model.')
 parser.add_argument('--listener_dropout', type=float, default=0.2,
                     help='The dropout rate (probability of setting a value to zero). '
                          'Dropout will be disabled if nonpositive.')
@@ -188,28 +190,31 @@ class ListenerLearner(NeuralLearner):
         l_in_embed = EmbeddingLayer(l_in, input_size=len(self.seq_vec.tokens),
                                     output_size=options.listener_cell_size,
                                     name=id_tag + 'desc_embed')
-        l_lstm1 = LSTMLayer(l_in_embed, num_units=options.listener_cell_size,
-                            nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
-                            forgetgate=Gate(b=Constant(options.listener_forget_bias)),
-                            grad_clipping=options.listener_grad_clipping,
-                            name=id_tag + 'lstm1')
-        if options.listener_dropout > 0.0:
-            l_lstm1_drop = DropoutLayer(l_lstm1, p=options.listener_dropout,
-                                        name=id_tag + 'lstm1_drop')
-        else:
-            l_lstm1_drop = l_lstm1
-        l_lstm2 = LSTMLayer(l_lstm1_drop, num_units=options.listener_cell_size,
-                            nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
-                            forgetgate=Gate(b=Constant(options.listener_forget_bias)),
-                            grad_clipping=options.listener_grad_clipping,
-                            name=id_tag + 'lstm2')
-        if options.listener_dropout > 0.0:
-            l_lstm2_drop = DropoutLayer(l_lstm2, p=options.listener_dropout,
-                                        name=id_tag + 'lstm2_drop')
-        else:
-            l_lstm2_drop = l_lstm2
 
-        l_hidden = DenseLayer(l_lstm2_drop, num_units=options.listener_cell_size,
+        cell = CELLS[options.speaker_cell]
+        cell_kwargs = {
+            'grad_clipping': options.speaker_grad_clipping,
+            'num_units': options.listener_cell_size,
+        }
+        if options.speaker_cell == 'LSTM':
+            cell_kwargs['forgetgate'] = Gate(b=Constant(options.speaker_forget_bias))
+        if options.speaker_cell != 'GRU':
+            cell_kwargs['nonlinearity'] = NONLINEARITIES[options.speaker_nonlinearity]
+
+        l_rec1 = cell(l_in_embed, name=id_tag + 'rec1', **cell_kwargs)
+        if options.listener_dropout > 0.0:
+            l_rec1_drop = DropoutLayer(l_rec1, p=options.listener_dropout,
+                                       name=id_tag + 'rec1_drop')
+        else:
+            l_rec1_drop = l_rec1
+        l_rec2 = cell(l_rec1_drop, name=id_tag + 'rec2', **cell_kwargs)
+        if options.listener_dropout > 0.0:
+            l_rec2_drop = DropoutLayer(l_rec2, p=options.listener_dropout,
+                                       name=id_tag + 'rec2_drop')
+        else:
+            l_rec2_drop = l_rec2
+
+        l_hidden = DenseLayer(l_rec2_drop, num_units=options.listener_cell_size,
                               nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
                               name=id_tag + 'hidden')
         if options.listener_dropout > 0.0:
