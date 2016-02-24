@@ -420,7 +420,9 @@ class SimpleLasagneModel(object):
 
         updates = optimizer(scaled_grads, params, learning_rate=learning_rate)
         if not options.no_nan_suppression:
-            updates = apply_nan_suppression(updates)
+            # TODO: print_mode='all' somehow is always printing, even when
+            # there are no NaNs. But tests are passing, even on GPU!
+            updates = apply_nan_suppression(updates, print_mode='none')
 
         if options.detect_nans:
             mode = MonitorMode(post_func=detect_nan)
