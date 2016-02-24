@@ -3,7 +3,7 @@ import theano  # NOQA: for doctest
 import theano.tensor as T
 from collections import OrderedDict
 from theano.ifelse import ifelse
-from theano.printing import Print, pydotprint
+from theano.printing import Print
 
 
 def apply_nan_suppression(updates, print_mode='all'):
@@ -45,8 +45,6 @@ def apply_nan_suppression(updates, print_mode='all'):
     >>> safe_updates = apply_nan_suppression(updates)
     >>> func = theano.function([inc], safe_updates[param],
     ...                        updates=safe_updates)
-    >>> pydotprint(func, 'nan_suppress.svg', format='svg', var_with_name_simple=True)
-    The output file is available at nan_suppress.svg
     >>> func([1., 2.])
     array([ 1.,  2.])
     >>> func([2., float('nan')])
@@ -73,6 +71,11 @@ def apply_nan_suppression(updates, print_mode='all'):
         else:
             raise ValueError("print_mode must be one of 'all', 'shape', or 'none'")
 
+        # For some reason, the ifelse needs to be used in a calculation, or the
+        # Print gets optimized away. So we can't do
+        #   suppressed = (zeros_like(Print('warning')(new_expression)) +
+        #                 shared_variable)
+        #   ifelse(isnan, suppressed, new_expression)
         new_updates[shared_variable] = shared_variable + ifelse(isnan, suppressed,
                                                                 new_expression - shared_variable)
 

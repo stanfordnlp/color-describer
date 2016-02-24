@@ -13,6 +13,7 @@ from matplotlib.colors import hsv_to_rgb
 from theano.compile import MonitorMode
 from theano.printing import pydotprint
 
+from helpers import apply_nan_suppression
 from stanza.unstable import config, progress, summary
 from stanza.unstable.learner import Learner
 from stanza.unstable.rng import get_rng
@@ -36,6 +37,8 @@ parser.add_argument('--verbosity', type=int, default=4,
 parser.add_argument('--no_graphviz', action='store_true',
                     help='If `True`, do not use theano.printing.pydotprint to visualize '
                          'function graphs.')
+parser.add_argument('--no_nan_suppression', action='store_true',
+                    help='If `True`, do not try to suppress NaNs in training.')
 parser.add_argument('--monitor_grads', action='store_true',
                     help='If `True`, return gradients for monitoring and write them to the '
                          'TensorBoard events file.')
@@ -416,6 +419,9 @@ class SimpleLasagneModel(object):
             scaled_grads = train_loss_grads
 
         updates = optimizer(scaled_grads, params, learning_rate=learning_rate)
+        if not options.no_nan_suppression:
+            updates = apply_nan_suppression(updates)
+
         if options.detect_nans:
             mode = MonitorMode(post_func=detect_nan)
         else:
