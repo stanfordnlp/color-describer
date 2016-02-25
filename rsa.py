@@ -1,10 +1,9 @@
 import operator
 import theano.tensor as T
 from collections import OrderedDict
-from lasagne.updates import rmsprop
 
 from stanza.unstable import config
-from neural import SimpleLasagneModel, NeuralLearner
+from neural import SimpleLasagneModel, NeuralLearner, OPTIMIZERS
 from listener import LISTENERS
 from speaker import SPEAKERS
 
@@ -21,6 +20,10 @@ parser.add_argument('--eval_agent', type=int, default=0,
                     help='Index of the agent (listener/speaker) to use as the primary object '
                          'of evaluation. Whether this agent is a listener or speaker will be '
                          'inferred from the --listener flag.')
+parser.add_argument('--rsa_optimizer', choices=OPTIMIZERS.keys(), default='rmsprop',
+                    help='The optimization (update) algorithm to use for RSA training.')
+parser.add_argument('--rsa_learning_rate', type=float, default=0.001,
+                    help='The learning rate to use for RSA training.')
 
 parser.add_argument('--rsa_alpha', type=float, nargs='*', default=[1.0],
                     help='Weights for the log-likelihood of the dataset according to the '
@@ -118,6 +121,8 @@ class RSASubModel(SimpleLasagneModel):
 
 class RSAGraphModel(SimpleLasagneModel):
     def __init__(self, listeners, speakers, eval_agent, id=None):
+        options = config.options()
+
         self.listeners = listeners
         self.speakers = speakers
         self.eval_agent = eval_agent
@@ -127,7 +132,9 @@ class RSAGraphModel(SimpleLasagneModel):
                        [speaker.model.target_var for speaker in speakers])
         super(RSAGraphModel, self).__init__(input_vars, target_vars,
                                             l_out=eval_agent.model.l_out,
-                                            loss=None, optimizer=rmsprop, id=id)
+                                            loss=None, optimizer=OPTIMIZERS[options.rsa_optimizer],
+                                            learning_rate=options.rsa_learning_rate,
+                                            id=id)
 
     def params(self):
         result = []
