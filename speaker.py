@@ -53,7 +53,7 @@ parser.add_argument('--speaker_eval_batch_size', type=int, default=16384,
                          'not affect modeling accuracy.')
 parser.add_argument('--speaker_optimizer', choices=OPTIMIZERS.keys(), default='rmsprop',
                     help='The optimization (update) algorithm to use for speaker training.')
-parser.add_argument('--speaker_learning_rate', type=float, default=0.001,
+parser.add_argument('--speaker_learning_rate', type=float, default=0.1,
                     help='The learning rate to use for speaker training.')
 parser.add_argument('--speaker_grad_clipping', type=float, default=0.0,
                     help='The maximum absolute value of the gradient messages for the'

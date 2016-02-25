@@ -22,7 +22,7 @@ parser.add_argument('--eval_agent', type=int, default=0,
                          'inferred from the --listener flag.')
 parser.add_argument('--rsa_optimizer', choices=OPTIMIZERS.keys(), default='rmsprop',
                     help='The optimization (update) algorithm to use for RSA training.')
-parser.add_argument('--rsa_learning_rate', type=float, default=0.001,
+parser.add_argument('--rsa_learning_rate', type=float, default=0.1,
                     help='The learning rate to use for RSA training.')
 
 parser.add_argument('--rsa_alpha', type=float, nargs='*', default=[1.0],
