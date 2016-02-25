@@ -2,7 +2,8 @@ import numpy as np
 import theano
 import theano.tensor as T
 from collections import Counter
-from lasagne.layers import InputLayer, DropoutLayer, DenseLayer, EmbeddingLayer, NonlinearityLayer
+from lasagne.layers import InputLayer, DropoutLayer, DenseLayer, EmbeddingLayer
+from lasagne.layers import BiasLayer, NonlinearityLayer
 from lasagne.layers.recurrent import Gate
 from lasagne.init import Constant
 from lasagne.objectives import categorical_crossentropy
@@ -16,7 +17,8 @@ from neural import NONLINEARITIES, OPTIMIZERS, CELLS
 parser = config.get_options_parser()
 parser.add_argument('--listener_cell_size', type=int, default=20,
                     help='The number of dimensions of all hidden layers and cells in '
-                         'the listener model.')
+                         'the listener model. If 0 and using the AtomicListenerLearner, '
+                         'remove all hidden layers and only train a linear classifier.')
 parser.add_argument('--listener_forget_bias', type=float, default=5.0,
                     help='The initial value of the forget gate bias in LSTM cells in '
                          'the listener model. A positive initial forget gate bias '
@@ -78,6 +80,32 @@ class UnigramPrior(object):
             return token_probs.sum(axis=1)
 
 
+class AtomicUniformPrior(object):
+    def __init__(self, vocab_size):
+        self.vocab_size = vocab_size
+
+    def fit(self, xs, ys):
+        pass
+
+    def apply(self, input_vars):
+        c = input_vars[0]
+        if c.ndim == 1:
+            ones = T.ones_like(c)
+        else:
+            ones = T.ones_like(c[:, 0])
+        return -np.log(self.vocab_size) * ones
+
+
+PRIORS = {
+    'Unigram': UnigramPrior,
+    'AtomicUniform': AtomicUniformPrior,
+}
+
+parser.add_argument('--listener_prior', choices=PRIORS.keys(), default='Unigram',
+                    help='The prior model for the listener (prior over utterances). '
+                         'Only used in RSA learner.')
+
+
 class ListenerLearner(NeuralLearner):
     '''
     An LSTM-based listener (guesses colors from descriptions).
@@ -112,6 +140,10 @@ class ListenerLearner(NeuralLearner):
             scores_arr = np.log(probs[np.arange(len(batch)), y]) - np.log(bucket_volume)
             scores.extend(scores_arr.tolist())
         progress.end_task()
+        if options.verbosity >= 9:
+            print('%s %ss:') % (self.id, 'sample' if random else 'prediction')
+            for inst, prediction in zip(eval_instances, predictions):
+                print('%s -> %s' % (repr(inst.input), repr(prediction)))
 
         return predictions, scores
 
@@ -176,8 +208,9 @@ class ListenerLearner(NeuralLearner):
                                  learning_rate=options.listener_learning_rate,
                                  id=self.id)
 
-        self.prior_emp = UnigramPrior(vocab_size=len(self.seq_vec.tokens))
-        self.prior_smooth = UnigramPrior(vocab_size=len(self.seq_vec.tokens))  # TODO: smoothing
+        prior_class = PRIORS[options.listener_prior]
+        self.prior_emp = prior_class(vocab_size=len(self.seq_vec.tokens))
+        self.prior_smooth = prior_class(vocab_size=len(self.seq_vec.tokens))  # TODO: smoothing
 
     def _get_l_out(self, input_vars):
         options = config.options()
@@ -292,20 +325,25 @@ class AtomicListenerLearner(ListenerLearner):
 
         l_in = InputLayer(shape=(None,), input_var=input_var,
                           name=id_tag + 'desc_input')
+        embed_size = options.listener_cell_size or self.color_vec.num_types
         l_in_embed = EmbeddingLayer(l_in, input_size=len(self.seq_vec.tokens),
-                                    output_size=options.listener_cell_size,
+                                    output_size=embed_size,
                                     name=id_tag + 'desc_embed')
-        l_hidden = DenseLayer(l_in_embed, num_units=options.listener_cell_size,
-                              nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
-                              name=id_tag + 'hidden')
-        if options.listener_dropout > 0.0:
-            l_hidden_drop = DropoutLayer(l_hidden, p=options.listener_dropout,
-                                         name=id_tag + 'hidden_drop')
-        else:
-            l_hidden_drop = l_hidden
 
-        l_scores = DenseLayer(l_hidden_drop, num_units=self.color_vec.num_types, nonlinearity=None,
-                              name=id_tag + 'scores')
+        if options.listener_cell_size == 0:
+            l_scores = BiasLayer(l_in_embed, name=id_tag + 'bias')
+        else:
+            l_hidden = DenseLayer(l_in_embed, num_units=options.listener_cell_size,
+                                  nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
+                                  name=id_tag + 'hidden')
+            if options.listener_dropout > 0.0:
+                l_hidden_drop = DropoutLayer(l_hidden, p=options.listener_dropout,
+                                             name=id_tag + 'hidden_drop')
+            else:
+                l_hidden_drop = l_hidden
+
+            l_scores = DenseLayer(l_hidden_drop, num_units=self.color_vec.num_types,
+                                  nonlinearity=None, name=id_tag + 'scores')
         l_out = NonlinearityLayer(l_scores, nonlinearity=softmax, name=id_tag + 'out')
 
         return l_out, [l_in]

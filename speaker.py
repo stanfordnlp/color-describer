@@ -2,7 +2,7 @@ import numpy as np
 import theano.tensor as T
 from theano.tensor.nnet import crossentropy_categorical_1hot
 from lasagne.layers import InputLayer, DropoutLayer, EmbeddingLayer, NonlinearityLayer
-from lasagne.layers import ConcatLayer, ReshapeLayer, DenseLayer, get_output
+from lasagne.layers import ConcatLayer, ReshapeLayer, DenseLayer, BiasLayer, get_output
 from lasagne.layers.recurrent import Gate
 from lasagne.init import Constant
 from lasagne.nonlinearities import softmax
@@ -17,7 +17,8 @@ from neural import NONLINEARITIES, OPTIMIZERS, CELLS
 parser = config.get_options_parser()
 parser.add_argument('--speaker_cell_size', type=int, default=20,
                     help='The number of dimensions of all hidden layers and cells in '
-                         'the speaker model.')
+                         'the speaker model. If 0 and using the AtomicSpeakerLearner, '
+                         'remove all hidden layers and only train a linear classifier.')
 parser.add_argument('--speaker_forget_bias', type=float, default=5.0,
                     help='The initial value of the forget gate bias in LSTM cells in '
                          'the speaker model. A positive initial forget gate bias '
@@ -388,6 +389,10 @@ class AtomicSpeakerLearner(NeuralLearner):
             scores_arr = np.log(probs[np.arange(len(batch)), y])
             scores.extend(scores_arr.tolist())
         progress.end_task()
+        if options.verbosity >= 9:
+            print('%s %ss:') % (self.id, 'sample' if random else 'prediction')
+            for inst, prediction in zip(eval_instances, predictions):
+                print('%s -> %s' % (repr(inst.input), repr(prediction)))
 
         return predictions, scores
 
@@ -445,24 +450,31 @@ class AtomicSpeakerLearner(NeuralLearner):
 
         l_color = InputLayer(shape=(None,), input_var=input_var,
                              name=id_tag + 'color_input')
+        embed_size = options.speaker_cell_size or self.seq_vec.num_types
         l_color_embed = EmbeddingLayer(l_color, input_size=self.color_vec.num_types,
-                                       output_size=options.speaker_cell_size,
+                                       output_size=embed_size,
                                        name=id_tag + 'color_embed')
-        if options.speaker_dropout > 0.0:
-            l_color_drop = DropoutLayer(l_color_embed, p=options.speaker_dropout,
-                                        name=id_tag + 'color_drop')
+
+        if options.speaker_cell_size == 0:
+            l_scores = BiasLayer(l_color_embed, name=id_tag + 'bias')
         else:
-            l_color_drop = l_color_embed
-        l_hidden = DenseLayer(l_color_drop, num_units=options.speaker_cell_size,
-                              nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
-                              name=id_tag + 'hidden')
-        if options.speaker_dropout > 0.0:
-            l_hidden_drop = DropoutLayer(l_hidden, p=options.speaker_dropout,
-                                         name=id_tag + 'hidden_drop')
-        else:
-            l_hidden_drop = l_hidden
-        l_scores = DenseLayer(l_hidden_drop, num_units=self.seq_vec.num_types, nonlinearity=None,
-                              name=id_tag + 'scores')
+            if options.speaker_dropout > 0.0:
+                l_color_drop = DropoutLayer(l_color_embed, p=options.speaker_dropout,
+                                            name=id_tag + 'color_drop')
+            else:
+                l_color_drop = l_color_embed
+
+            l_hidden = DenseLayer(l_color_drop, num_units=options.speaker_cell_size,
+                                  nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
+                                  name=id_tag + 'hidden')
+            if options.speaker_dropout > 0.0:
+                l_hidden_drop = DropoutLayer(l_hidden, p=options.speaker_dropout,
+                                             name=id_tag + 'hidden_drop')
+            else:
+                l_hidden_drop = l_hidden
+
+            l_scores = DenseLayer(l_hidden_drop, num_units=self.seq_vec.num_types,
+                                  nonlinearity=None, name=id_tag + 'scores')
         l_out = NonlinearityLayer(l_scores, nonlinearity=softmax,
                                   name=id_tag + 'softmax')
 
