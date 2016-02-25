@@ -225,9 +225,11 @@ class LookupLearner(Learner):
                 self.res = self.res * 3
             self.color_vec = ColorVectorizer(self.res, hsv=self.hsv)
             self.vectorize = lambda c: self.color_vec.vectorize(c, hsv=True)
+            self.unvectorize = lambda c: self.color_vec.unvectorize(c, hsv=True)
             self.score_adjustment = -np.log((256.0 ** 3) / self.color_vec.num_types)
         else:
             self.vectorize = lambda c: c
+            self.unvectorize = lambda c: c
             self.score_adjustment = 0.0
 
     @property
@@ -260,7 +262,10 @@ class LookupLearner(Learner):
             counter = self.counters[inp]
             highest = counter.most_common(1)
             if highest:
-                prediction = highest[0][0]
+                if options.listener:
+                    prediction = self.unvectorize(highest[0][0])
+                else:
+                    prediction = highest[0][0]
             elif options.listener:
                 prediction = (0, 0, 0)
             else:
