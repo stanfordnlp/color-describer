@@ -136,12 +136,6 @@ class HistogramLearner(Learner):
         probs = [np.array(h.get_probs(color)) for h in self.hists]
         return sum(w * p for w, p in zip(self.WEIGHTS, probs))
 
-    def predict(self, eval_instances):
-        return self.predict_and_score(eval_instances)[0]
-
-    def score(self, eval_instances):
-        return self.predict_and_score(eval_instances)[1]
-
     def predict_and_score(self, eval_instances):
         predictions = []
         scores = []
