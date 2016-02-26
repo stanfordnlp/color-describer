@@ -23,7 +23,7 @@ coverage_report/
 
 rugstk
 
-runs/
+runs
 
 # virtualenv shortcut script
 activate
