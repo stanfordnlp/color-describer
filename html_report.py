@@ -2,7 +2,6 @@ import colorsys
 import glob
 import json
 import os
-from collections import defaultdict
 
 from stanza.unstable import config, instance  # NOQA (for doctest)
 
@@ -87,7 +86,6 @@ def format_config_dict(config_dict):
 
 
 def format_results(results):
-    results = defaultdict(str, results)
     results_table_template = '''    <h3>{split}</h3>
     <table>
 {header}
@@ -106,17 +104,32 @@ def format_results(results):
                                                            for a in aggregates))
         values_table = [
             [
-                results['.'.join((split, m, a) if a else (split, m))]
+                get_formatted_result(results, split, m, a)
                 for a in aggregates
             ]
             for m in metrics
         ]
         rows = '\n'.join(
-            row_template.format(metric=m, values=''.join('<td>{}</td>'.format(v) for v in row))
+            row_template.format(metric=m, values=''.join('<td align="right">{}</td>'.format(v)
+                                                         for v in row))
             for m, row in zip(metrics, values_table)
         )
         tables.append(results_table_template.format(split=split, header=header, rows=rows))
     return '\n'.join(tables)
+
+
+def get_formatted_result(results, split, m, a):
+    key = '.'.join((split, m, a) if a else (split, m))
+    if key in results:
+        value = results[key]
+        if isinstance(value, int):
+            return '{:,d}'.format(value)
+        elif value > 1e8:
+            return '{:.5e}'.format(value)
+        else:
+            return '{:,.2f}'.format(value)
+    else:
+        return ''
 
 
 def format_error_analysis(data, scores, predictions):
@@ -189,7 +202,9 @@ def generate_html_reports(dirname=None):
     dirname = dirname or options.run_dir
 
     config_dict = load_dict(os.path.join(dirname, 'config.json'))
-    results = load_dict(os.path.join(dirname, 'results.json'))
+    results = {}
+    for filename in glob.glob(os.path.join(dirname, 'results.*.json')):
+        results.update(load_dict(filename))
     for filename in glob.glob(os.path.join(dirname, 'data.*.jsons')):
         split = os.path.basename(filename).split('.')[-2]
         data = load_dataset(filename)
@@ -204,7 +219,7 @@ def load_dict(filename):
         with open(filename) as infile:
             return json.load(infile)
     except IOError, e:
-        return {'error': str(e)}
+        return {'error.message.value': str(e)}
 
 
 def load_dataset(filename, transform_func=(lambda x: x)):
