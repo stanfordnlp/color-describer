@@ -3,6 +3,7 @@ import numpy as np
 
 from stanza.unstable.learner import Learner
 from stanza.unstable import progress, config
+from lux import LuxLearner
 from listener import ListenerLearner, AtomicListenerLearner
 from speaker import SpeakerLearner, AtomicSpeakerLearner
 from neural import ColorVectorizer
@@ -306,6 +307,7 @@ class LookupLearner(Learner):
 
 LEARNERS = {
     'Histogram': HistogramLearner,
+    'Lux': LuxLearner,
     'Listener': ListenerLearner,
     'AtomicListener': AtomicListenerLearner,
     'Speaker': SpeakerLearner,
