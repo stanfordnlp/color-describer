@@ -657,8 +657,11 @@ class NeuralLearner(Learner):
         return self.seq_vec, self.color_vec, [p.get_value() for p in params]
 
     def __setstate__(self, state):
+        self.unpickle(state)
+
+    def unpickle(self, state, model_class=SimpleLasagneModel):
         self.seq_vec, self.color_vec, params_state = state
-        self._build_model()
+        self._build_model(model_class)
         params = self.params()
         for p, value in zip(params, params_state):
             p.set_value(value)

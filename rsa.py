@@ -405,6 +405,16 @@ class RSAGraphModel(SimpleLasagneModel):
 
 class RSALearner(NeuralLearner):
     def __init__(self, id=None):
+        self.init_submodels(id)
+
+        options = config.options()
+
+        color_resolution = (options.listener_color_resolution
+                            if options.listener else
+                            options.speaker_color_resolution)
+        super(RSALearner, self).__init__(color_resolution=color_resolution, id=id)
+
+    def init_submodels(self, id=None):
         options = config.options()
 
         id_tag = (id + '/') if id else ''
@@ -415,11 +425,6 @@ class RSALearner(NeuralLearner):
 
         agents = self.listeners if options.listener else self.speakers
         self.eval_agent = agents[options.eval_agent]
-
-        color_resolution = (options.listener_color_resolution
-                            if options.listener else
-                            options.speaker_color_resolution)
-        super(RSALearner, self).__init__(color_resolution=color_resolution, id=id)
 
     def predict(self, eval_instances):
         return self.eval_agent.predict(eval_instances)
@@ -464,9 +469,23 @@ class RSALearner(NeuralLearner):
     def _build_model(self):
         for agent in self.listeners + self.speakers:
             agent._build_model(RSASubModel)
+        self.build_aggregate_model()
+
+    def build_aggregate_model(self):
         self.model = RSAGraphModel(self.listeners, self.speakers, self.eval_agent)
         self.prior_emp = AggregatePrior(self.listeners, self.speakers, 'prior_emp')
         self.prior_smooth = AggregatePrior(self.listeners, self.speakers, 'prior_smooth')
+
+    def __getstate__(self):
+        return (self.seq_vec, self.color_vec,
+                [agent.__getstate__() for agent in self.listeners + self.speakers])
+
+    def __setstate__(self, state):
+        self.seq_vec, self.color_vec, submodels = state
+        self.init_submodels()
+        for agent, substate in zip(self.listeners + self.speakers, submodels):
+            agent.unpickle(substate, RSASubModel)
+        self.build_aggregate_model()
 
 
 def t_sum(seq, start=None, nested=False):
