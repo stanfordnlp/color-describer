@@ -12,7 +12,7 @@ from lasagne.updates import rmsprop
 from stanza.unstable import config, progress, iterators
 from stanza.unstable.rng import get_rng
 from neural import NeuralLearner, SimpleLasagneModel, SymbolVectorizer
-from neural import NONLINEARITIES, OPTIMIZERS, CELLS
+from neural import NONLINEARITIES, OPTIMIZERS, CELLS, sample
 
 parser = config.get_options_parser()
 parser.add_argument('--speaker_cell_size', type=int, default=20,
@@ -167,6 +167,8 @@ class SpeakerLearner(NeuralLearner):
         colors = []
         previous = []
         next_tokens = []
+        if options.verbosity >= 9:
+            print('%s _data_to_arrays:' % self.id)
         for i, inst in enumerate(training_instances):
             desc, color = get_desc(inst), get_color(inst)
             if test:
@@ -293,20 +295,6 @@ class SpeakerLearner(NeuralLearner):
         return masked_seq_crossentropy(input_vars[-1])
 
 
-def sample(a, temperature=1.0):
-    # helper function to sample an index from a probability array
-    a = np.array(a)
-    if len(a.shape) < 1:
-        raise ValueError('scalar is not a valid probability distribution')
-    elif len(a.shape) == 1:
-        # Cast to higher resolution to try to get high-precision normalization
-        a = np.exp(np.log(a) / temperature).astype(np.float64)
-        a /= np.sum(a)
-        return np.argmax(rng.multinomial(1, a, 1))
-    else:
-        return np.array([sample(s, temperature) for s in a])
-
-
 def strip_invalid_tokens(sentence):
     good_tokens = [t for t in sentence if t not in ('<s>', '<MASK>')]
     if '</s>' in good_tokens:
@@ -408,6 +396,8 @@ class AtomicSpeakerLearner(NeuralLearner):
 
         sentences = []
         colors = []
+        if options.verbosity >= 9:
+            print('%s _data_to_arrays:' % self.id)
         for i, inst in enumerate(training_instances):
             desc = get_desc(inst)
             if desc is None:

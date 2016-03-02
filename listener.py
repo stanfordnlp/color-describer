@@ -12,7 +12,7 @@ from lasagne.updates import rmsprop
 
 from stanza.unstable import config, instance, progress, iterators
 from neural import NeuralLearner, SimpleLasagneModel, SymbolVectorizer
-from neural import NONLINEARITIES, OPTIMIZERS, CELLS
+from neural import NONLINEARITIES, OPTIMIZERS, CELLS, sample
 
 parser = config.get_options_parser()
 parser.add_argument('--listener_cell_size', type=int, default=20,
@@ -134,8 +134,13 @@ class ListenerLearner(NeuralLearner):
             xs, (y,) = self._data_to_arrays(batch, test=True)
 
             probs = self.model.predict(xs)
-            predictions.extend(self.color_vec.unvectorize_all(probs.argmax(axis=1),
-                                                              random=random, hsv=True))
+            if random:
+                indices = sample(probs)
+                predictions.extend(self.color_vec.unvectorize_all(indices,
+                                                                  random=True, hsv=True))
+            else:
+                predictions.extend(self.color_vec.unvectorize_all(probs.argmax(axis=1),
+                                                                  hsv=True))
             bucket_volume = (256.0 ** 3) / self.color_vec.num_types
             scores_arr = np.log(probs[np.arange(len(batch)), y]) - np.log(bucket_volume)
             scores.extend(scores_arr.tolist())
@@ -171,6 +176,8 @@ class ListenerLearner(NeuralLearner):
 
         sentences = []
         colors = []
+        if options.verbosity >= 9:
+            print('%s _data_to_arrays:' % self.id)
         for i, inst in enumerate(training_instances):
             self.word_counts.update([get_desc(inst)])
             desc = get_desc(inst).split()
@@ -283,6 +290,8 @@ class AtomicListenerLearner(ListenerLearner):
 
         sentences = []
         colors = []
+        if options.verbosity >= 9:
+            print('%s _data_to_arrays:' % self.id)
         for i, inst in enumerate(training_instances):
             self.word_counts.update([get_desc(inst)])
             desc = get_desc(inst)

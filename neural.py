@@ -89,6 +89,20 @@ def detect_nan(i, node, fn):
                 raise AssertionError
 
 
+def sample(a, temperature=1.0):
+    # helper function to sample an index from a probability array
+    a = np.array(a)
+    if len(a.shape) < 1:
+        raise ValueError('scalar is not a valid probability distribution')
+    elif len(a.shape) == 1:
+        # Cast to higher resolution to try to get high-precision normalization
+        a = np.exp(np.log(a) / temperature).astype(np.float64)
+        a /= np.sum(a)
+        return np.argmax(rng.multinomial(1, a, 1))
+    else:
+        return np.array([sample(s, temperature) for s in a])
+
+
 class SymbolVectorizer(object):
     '''
     Maps symbols from an alphabet/vocabulary of indefinite size to and from
