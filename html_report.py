@@ -31,23 +31,23 @@ def html_report(config_dict, results, data, scores, predictions):
         <h3>dev</h3>
         <table>
             <tr><th>Metric</th><th>gmean</th></tr>
-            <tr><td>perplexity</td><td>14.0</td></tr>
+            <tr><td>perplexity</td><td align="right">14.00</td></tr>
         </table>
         <h2>Error analysis</h2>
         <h3>Worst</h3>
         <table>
             <tr><th>input</th><th>output</th><th>prediction</th><th>score</th></tr>
-            <tr><td bgcolor='#ff0000'>[0, 100, 100]</td><td bgcolor='#fff'>'red'</td><td bgcolor='#fff'>'bright red'</td><td>-2.639057329615259</td></tr>
+            <tr><td bgcolor="#ff0000">[0, 100, 100]</td><td bgcolor="#fff">'red'</td><td bgcolor="#fff">'bright red'</td><td>-2.639057329615259</td></tr>
         </table>
         <h3>Best</h3>
         <table>
             <tr><th>input</th><th>output</th><th>prediction</th><th>score</th></tr>
-            <tr><td bgcolor='#ff0000'>[0, 100, 100]</td><td bgcolor='#fff'>'red'</td><td bgcolor='#fff'>'bright red'</td><td>-2.639057329615259</td></tr>
+            <tr><td bgcolor="#ff0000">[0, 100, 100]</td><td bgcolor="#fff">'red'</td><td bgcolor="#fff">'bright red'</td><td>-2.639057329615259</td></tr>
         </table>
         <h3>Head</h3>
         <table>
             <tr><th>input</th><th>output</th><th>prediction</th><th>score</th></tr>
-            <tr><td bgcolor='#ff0000'>[0, 100, 100]</td><td bgcolor='#fff'>'red'</td><td bgcolor='#fff'>'bright red'</td><td>-2.639057329615259</td></tr>
+            <tr><td bgcolor="#ff0000">[0, 100, 100]</td><td bgcolor="#fff">'red'</td><td bgcolor="#fff">'bright red'</td><td>-2.639057329615259</td></tr>
         </table>
     </body>
     </html>
@@ -139,10 +139,10 @@ def format_error_analysis(data, scores, predictions):
 {examples}
     </table>'''
 
-    example_template = ("        <tr><td bgcolor='{icolor}'>{input!r}</td>"
-                        "<td bgcolor='{ocolor}'>{output!r}</td>"
-                        "<td bgcolor='{pcolor}'>{prediction!r}</td>"
-                        "<td>{score!r}</td></tr>")
+    example_template = ('        <tr><td bgcolor="{icolor}">{input!r}</td>'
+                        '<td bgcolor="{ocolor}">{output!r}</td>'
+                        '<td bgcolor="{pcolor}">{prediction!r}</td>'
+                        '<td>{score!r}</td></tr>')
     collated = [dict(inst) for inst in data]
     for inst, score, pred in zip(collated, scores, predictions):
         inst['score'] = score
