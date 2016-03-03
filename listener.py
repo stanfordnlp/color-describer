@@ -160,7 +160,7 @@ class ListenerLearner(NeuralLearner):
         for i, desc in enumerate(most_common):
             dist = probs[i, :]
             for image, channel in zip(self.color_vec.visualize_distribution(dist), '012'):
-                writer.log_image(step, 'listener/%s/%s' % (desc, channel), image)
+                writer.log_image(step, '%s/%s/%s' % (self.id, desc, channel), image)
         super(ListenerLearner, self).on_iter_end(step, writer)
 
     def _data_to_arrays(self, training_instances,

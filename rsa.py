@@ -435,6 +435,10 @@ class RSALearner(NeuralLearner):
     def predict_and_score(self, eval_instances):
         return self.eval_agent.predict_and_score(eval_instances)
 
+    def on_iter_end(self, step, writer):
+        for agent in self.speakers + self.listeners:
+            agent.on_iter_end(step, writer)
+
     def _data_to_arrays(self, training_instances,
                         init_vectorizer=False, test=False, inverted=False):
         options = config.options()
