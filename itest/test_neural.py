@@ -7,9 +7,13 @@ import sys
 from numbers import Number
 from unittest import TestCase
 
+import run_experiment  # NOQA: for command line options
 from stanza.unstable import config, instance, summary
+from learners import HistogramLearner, LookupLearner
+from learners import MostCommonSpeakerLearner, RandomListenerLearner
 from speaker import SpeakerLearner, AtomicSpeakerLearner
-from listener import ListenerLearner
+from listener import ListenerLearner, AtomicListenerLearner
+from rsa import RSALearner
 
 
 TEST_DIR = '/shouldnotexist'
@@ -60,12 +64,25 @@ class TestModels(TestCase):
     def test_atomic_speaker(self):
         self.run_speaker(AtomicSpeakerLearner)
 
-    def run_speaker(self, speaker_class, cell='LSTM'):
+    def test_rsa_speaker(self):
+        self.run_speaker(RSALearner, images=True)  # extra images from listener
+
+    def test_histogram_speaker(self):
+        self.run_speaker(HistogramLearner, tensorboard=False)
+
+    def test_lookup_speaker(self):
+        self.run_speaker(LookupLearner, tensorboard=False)
+
+    def test_most_common_speaker(self):
+        self.run_speaker(MostCommonSpeakerLearner, tensorboard=False)
+
+    def run_speaker(self, speaker_class, cell='LSTM', tensorboard=True, images=False):
         sys.argv = []
         options = config.options()
         options.train_iters = 2
         options.train_epochs = 3
         options.speaker_cell = cell
+        options.listener = False
 
         mo = MockOpen(TEST_DIR)
         mgfp = mock_get_file_path(TEST_DIR)
@@ -87,48 +104,10 @@ class TestModels(TestCase):
         self.assertEqual(len(scores), 1)
         self.assertIsInstance(scores[0], float)
 
-        lossesfile = mo.files[mgfp('losses.tfevents')]
-        lossesfile.seek(0)
-        events = list(summary.read_events(lossesfile))
-        self.assertEqual(len(events), 12)
-        for e in events:
-            for v in e.summary.value:
-                self.assertIsInstance(v.simple_value, float)
+        if tensorboard:
+            self.check_tensorboard(mo, mgfp, images=images)
 
-    def test_listener(self):
-        self.run_listener()
-
-    def test_listener_gru(self):
-        self.run_listener('GRU')
-
-    def run_listener(self, cell='LSTM'):
-        sys.argv = []
-        options = config.options()
-        options.train_iters = 2
-        options.train_epochs = 3
-        options.listener_cell = cell
-
-        mo = MockOpen(TEST_DIR)
-        mgfp = mock_get_file_path(TEST_DIR)
-        with mock.patch('stanza.unstable.summary.open', mo), \
-                mock.patch('stanza.unstable.summary.SummaryWriter', MockSummaryWriter), \
-                mock.patch('stanza.unstable.config.open', mo), \
-                mock.patch('stanza.unstable.config.get_file_path', mgfp):
-            listener = ListenerLearner()
-            train_data = [instance.Instance('green', (0, 255, 0))]
-            listener.train(train_data)
-            predictions, scores = listener.predict_and_score(train_data)
-
-        # predictions = [(123, 45, 67)]
-        self.assertIsInstance(predictions, list)
-        self.assertEqual(len(predictions), 1)
-        self.assertEqual(len(predictions[0]), 3)
-        self.assertIsInstance(predictions[0][0], Number)
-        # scores = [123.456]
-        self.assertIsInstance(scores, list)
-        self.assertEqual(len(scores), 1)
-        self.assertIsInstance(scores[0], float)
-
+    def check_tensorboard(self, mo, mgfp, images=False):
         lossesfile = mo.files[mgfp('losses.tfevents')]
         lossesfile.seek(0)
         events = list(summary.read_events(lossesfile))
@@ -146,4 +125,55 @@ class TestModels(TestCase):
                     self.assertIsInstance(v.simple_value, float)
                     num_scalars += 1
         self.assertEqual(num_scalars, 12)
-        self.assertEqual(num_images, 6)
+        if images:
+            self.assertEqual(num_images, 6)
+
+    def test_listener(self):
+        self.run_listener()
+
+    def test_listener_gru(self):
+        self.run_listener(cell='GRU')
+
+    def test_random_listener(self):
+        self.run_listener(listener_class=RandomListenerLearner, tensorboard=False)
+
+    def test_lookup_listener(self):
+        self.run_listener(LookupLearner, tensorboard=False)
+
+    def test_atomic_listener(self):
+        self.run_listener(listener_class=AtomicListenerLearner)
+
+    def test_rsa_listener(self):
+        self.run_listener(listener_class=RSALearner)
+
+    def run_listener(self, listener_class=ListenerLearner, cell='LSTM', tensorboard=True):
+        sys.argv = []
+        options = config.options()
+        options.train_iters = 2
+        options.train_epochs = 3
+        options.listener_cell = cell
+        options.listener = True
+
+        mo = MockOpen(TEST_DIR)
+        mgfp = mock_get_file_path(TEST_DIR)
+        with mock.patch('stanza.unstable.summary.open', mo), \
+                mock.patch('stanza.unstable.summary.SummaryWriter', MockSummaryWriter), \
+                mock.patch('stanza.unstable.config.open', mo), \
+                mock.patch('stanza.unstable.config.get_file_path', mgfp):
+            listener = listener_class()
+            train_data = [instance.Instance('green', (0, 255, 0))]
+            listener.train(train_data)
+            predictions, scores = listener.predict_and_score(train_data)
+
+        # predictions = [(123, 45, 67)]
+        self.assertIsInstance(predictions, list)
+        self.assertEqual(len(predictions), 1)
+        self.assertEqual(len(predictions[0]), 3)
+        self.assertIsInstance(predictions[0][0], Number)
+        # scores = [123.456]
+        self.assertIsInstance(scores, list)
+        self.assertEqual(len(scores), 1)
+        self.assertIsInstance(scores[0], float)
+
+        if tensorboard:
+            self.check_tensorboard(mo, mgfp, images=True)
