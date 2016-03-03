@@ -173,13 +173,13 @@ class ListenerLearner(NeuralLearner):
         if init_vectorizer:
             self.seq_vec.add_all(['<s>'] + get_desc(inst).split() + ['</s>']
                                  for inst in training_instances)
+            self.word_counts.update([get_desc(inst) for inst in training_instances])
 
         sentences = []
         colors = []
         if options.verbosity >= 9:
             print('%s _data_to_arrays:' % self.id)
         for i, inst in enumerate(training_instances):
-            self.word_counts.update([get_desc(inst)])
             desc = get_desc(inst).split()
             color = get_color(inst)
             if not color:
