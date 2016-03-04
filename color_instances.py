@@ -49,6 +49,16 @@ def get_dev_instances(listener=False):
     return insts
 
 
+def tune_train(listener=False):
+    all_train = get_training_instances(listener=listener)
+    return all_train[:-100000]
+
+
+def tune_eval(listener=False):
+    all_train = get_training_instances(listener=listener)
+    return all_train[-100000:]
+
+
 def pairs_to_insts(data, listener=False):
     return [
         (Instance(input=name, output=color)
@@ -91,6 +101,7 @@ DataSource = namedtuple('DataSource', ['train_data', 'test_data'])
 
 SOURCES = {
     'dev': DataSource(get_training_instances, get_dev_instances),
+    'tune': DataSource(tune_train, tune_eval),
     '1word': DataSource(one_word, one_word),
     '0word': DataSource(empty_str, empty_str),
     'scalar': DataSource(scalar_imp_train, scalar_imp_test),
