@@ -673,13 +673,17 @@ class NeuralLearner(Learner):
         if not hasattr(self, 'model'):
             raise RuntimeError("trying to pickle a model that hasn't been built yet")
         params = self.params()
-        return self.seq_vec, self.color_vec, [p.get_value() for p in params]
+        return self.seq_vec, self.color_vec, [p.get_value() for p in params], self.id
 
     def __setstate__(self, state):
         self.unpickle(state)
 
     def unpickle(self, state, model_class=SimpleLasagneModel):
-        self.seq_vec, self.color_vec, params_state = state
+        if len(state) == 3:
+            self.seq_vec, self.color_vec, params_state = state
+            self.id = None
+        else:
+            self.seq_vec, self.color_vec, params_state, self.id = state
         self._build_model(model_class)
         params = self.params()
         for p, value in zip(params, params_state):
