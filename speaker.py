@@ -103,7 +103,7 @@ class SpeakerLearner(NeuralLearner):
             (c, _p, mask), (_y,) = self._data_to_arrays(batch, test=True)
 
             done = np.zeros((len(batch),), dtype=np.bool)
-            outputs = [['<s>'] + ['<MASK>'] * (self.seq_vec.max_len - 2)
+            outputs = [['<s>'] + ['</s>'] * (self.seq_vec.max_len - 2)
                        for _ in batch]
             length = 0
             while not done.all() and length < self.seq_vec.max_len - 1:
@@ -172,7 +172,7 @@ class SpeakerLearner(NeuralLearner):
         for i, inst in enumerate(training_instances):
             desc, color = get_desc(inst), get_color(inst)
             if test:
-                full = ['<s>'] + ['<MASK>'] * (self.seq_vec.max_len - 2)
+                full = ['<s>'] + ['</s>'] * (self.seq_vec.max_len - 2)
             else:
                 desc = desc.split()
                 full = (['<s>'] + desc + ['</s>'] +
