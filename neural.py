@@ -588,7 +588,7 @@ class NeuralLearner(Learner):
         self.color_vec = ColorVectorizer(color_resolution, hsv=hsv)
         self.id = id
 
-    def train(self, training_instances):
+    def train(self, training_instances, validation_instances=None, metrics=None):
         options = config.options()
 
         self.dataset = training_instances
@@ -613,8 +613,13 @@ class NeuralLearner(Learner):
             progress.progress(iteration)
             self.model.fit(xs, ys, batch_size=options.batch_size, num_epochs=options.train_epochs,
                            summary_writer=writer, step=iteration * options.train_epochs)
+            validation_results = self.validate(validation_instances, metrics, iteration=iteration)
             if writer is not None:
-                self.on_iter_end((iteration + 1) * options.train_epochs, writer)
+                step = (iteration + 1) * options.train_epochs
+                self.on_iter_end(step, writer)
+                for key, value in validation_results.iteritems():
+                    tag = 'val/' + key.split('.', 1)[1].replace('.', '/')
+                    writer.log_scalar(step, tag, value)
         progress.end_task()
 
     def on_iter_end(self, step, writer):

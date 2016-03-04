@@ -25,8 +25,12 @@ parser.add_argument('--load', metavar='MODEL_FILE', default=None,
                          'from the specified path. If None or an empty string, train a '
                          'new model.')
 parser.add_argument('--train_size', type=int, default=None,
-                    help='The number of examples to use in training. '
-                         'If None, use the whole training set.')
+                    help='The number of examples to use in training. This number should '
+                         '*include* examples held out for validation. If None, use the '
+                         'whole training set.')
+parser.add_argument('--validation_size', type=int, default=0,
+                    help='The number of examples to hold out from the training set for '
+                         'monitoring generalization error.')
 parser.add_argument('--test_size', type=int, default=None,
                     help='The number of examples to use in testing. '
                          'If None, use the whole dev/test set.')
@@ -53,6 +57,11 @@ def main():
     train_data = color_instances.SOURCES[options.data_source].train_data(
         listener=options.listener
     )[:options.train_size]
+    if options.validation_size:
+        validation_data = train_data[-options.validation_size:]
+        train_data = train_data[:-options.validation_size]
+    else:
+        validation_data = None
     test_data = color_instances.SOURCES[options.data_source].test_data(
         options.listener
     )[:options.test_size]
@@ -72,7 +81,7 @@ def main():
         with open(options.load, 'rb') as infile:
             learner.load(infile)
     else:
-        learner.train(train_data)
+        learner.train(train_data, validation_data, metrics=m)
         with open(config.get_file_path('model.p'), 'wb') as outfile:
             learner.dump(outfile)
 

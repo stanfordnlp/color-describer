@@ -29,7 +29,7 @@ def lux_predict_and_score(inst):
 
 
 class LuxLearner(Learner):
-    def train(self, training_instances):
+    def train(self, training_instances, validation_instances='ignored', metrics='ignored'):
         pass
 
     def predict_and_score(self, eval_instances, random='ignored', verbosity='ignored'):

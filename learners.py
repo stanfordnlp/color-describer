@@ -116,7 +116,7 @@ class HistogramLearner(Learner):
         self.names = []
         self.name_to_index = defaultdict(lambda: -1)
 
-    def train(self, training_instances):
+    def train(self, training_instances, validation_instances='ignored', metrics='ignored'):
         self.names = sorted(set(inst.output for inst in training_instances)) + ['<unk>']
         self.name_to_index = defaultdict(lambda: -1,
                                          {n: i for i, n in enumerate(self.names)})
@@ -166,7 +166,7 @@ class MostCommonSpeakerLearner(Learner):
         self.seen = Counter()
         self.num_examples = 0
 
-    def train(self, training_instances):
+    def train(self, training_instances, validation_instances='ignored', metrics='ignored'):
         progress.start_task('Example', len(training_instances))
         for i, inst in enumerate(training_instances):
             progress.progress(i)
@@ -197,7 +197,7 @@ class MostCommonSpeakerLearner(Learner):
 
 
 class RandomListenerLearner(Learner):
-    def train(self, training_instances):
+    def train(self, training_instances, validation_instances='ignored', metrics='ignored'):
         self.num_params = 0
 
     def predict_and_score(self, eval_instances):
@@ -237,7 +237,7 @@ class LookupLearner(Learner):
     def num_params(self):
         return sum(len(c) for c in self.counters.values())
 
-    def train(self, training_instances):
+    def train(self, training_instances, validation_instances='ignored', metrics='ignored'):
         options = config.options()
         for inst in training_instances:
             inp, out = inst.input, inst.output
