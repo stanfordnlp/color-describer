@@ -1,5 +1,6 @@
 import numpy as np
 import theano.tensor as T
+import warnings
 from theano.tensor.nnet import crossentropy_categorical_1hot
 from lasagne.layers import InputLayer, DropoutLayer, EmbeddingLayer, NonlinearityLayer
 from lasagne.layers import ConcatLayer, ReshapeLayer, DenseLayer, BiasLayer, get_output
@@ -24,7 +25,7 @@ parser.add_argument('--speaker_forget_bias', type=float, default=5.0,
                          'the speaker model. A positive initial forget gate bias '
                          'encourages the model to remember everything by default. '
                          'If speaker_cell is not LSTM, this value is ignored.')
-parser.add_argument('--speaker_nonlinearity', choices=NONLINEARITIES.keys(), default='rectify',
+parser.add_argument('--speaker_nonlinearity', choices=NONLINEARITIES.keys(), default='tanh',
                     help='The nonlinearity/activation function to use for dense and '
                          'recurrent layers in the speaker model.')
 parser.add_argument('--speaker_cell', choices=CELLS.keys(), default='LSTM',
@@ -228,6 +229,7 @@ class SpeakerLearner(NeuralLearner):
 
     def _get_l_out(self, input_vars):
         options = config.options()
+        check_options(options)
         id_tag = (self.id + '/') if self.id else ''
 
         input_var, prev_output_var, mask_var = input_vars
@@ -293,6 +295,22 @@ class SpeakerLearner(NeuralLearner):
 
     def masked_loss(self, input_vars):
         return masked_seq_crossentropy(input_vars[-1])
+
+
+def check_options(options):
+    if options.speaker_grad_clipping:
+        warnings.warn('Per-dimension gradient clipping (--speaker_grad_clipping) is enabled. '
+                      'This feature is unlikely to correctly constrain gradients and avoid '
+                      'NaNs; use --true_grad_clipping instead.')
+    if options.speaker_recurrent_layers and not options.true_grad_clipping:
+        warnings.warn('Norm-constraint gradient clipping is disabled for a recurrent model. '
+                      'This will likely lead to exploding gradients.')
+    if options.speaker_recurrent_layers and options.true_grad_clipping > 6.0:
+        warnings.warn('Gradient clipping norm is unusually high (%s). '
+                      'This could lead to exploding gradients.' % options.true_grad_clipping)
+    if options.speaker_nonlinearity == 'rectify':
+        warnings.warn('Using ReLU as the output nonlinearity for a recurrent unit. This may '
+                      'be a source of NaNs in the gradient.')
 
 
 def strip_invalid_tokens(sentence):

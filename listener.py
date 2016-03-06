@@ -1,6 +1,7 @@
 import numpy as np
 import theano
 import theano.tensor as T
+import warnings
 from collections import Counter
 from lasagne.layers import InputLayer, DropoutLayer, DenseLayer, EmbeddingLayer
 from lasagne.layers import BiasLayer, NonlinearityLayer
@@ -23,7 +24,7 @@ parser.add_argument('--listener_forget_bias', type=float, default=5.0,
                     help='The initial value of the forget gate bias in LSTM cells in '
                          'the listener model. A positive initial forget gate bias '
                          'encourages the model to remember everything by default.')
-parser.add_argument('--listener_nonlinearity', choices=NONLINEARITIES.keys(), default='rectify',
+parser.add_argument('--listener_nonlinearity', choices=NONLINEARITIES.keys(), default='tanh',
                     help='The nonlinearity/activation function to use for dense and '
                          'LSTM layers in the listener model.')
 parser.add_argument('--listener_cell', choices=CELLS.keys(), default='LSTM',
@@ -221,6 +222,7 @@ class ListenerLearner(NeuralLearner):
 
     def _get_l_out(self, input_vars):
         options = config.options()
+        check_options(options)
         id_tag = (self.id + '/') if self.id else ''
 
         input_var = input_vars[0]
@@ -356,6 +358,22 @@ class AtomicListenerLearner(ListenerLearner):
         l_out = NonlinearityLayer(l_scores, nonlinearity=softmax, name=id_tag + 'out')
 
         return l_out, [l_in]
+
+
+def check_options(options):
+    if options.listener_grad_clipping:
+        warnings.warn('Per-dimension gradient clipping (--listener_grad_clipping) is enabled. '
+                      'This feature is unlikely to correctly constrain gradients and avoid '
+                      'NaNs; use --true_grad_clipping instead.')
+    if not options.true_grad_clipping:
+        warnings.warn('Norm-constraint gradient clipping is disabled for a recurrent model. '
+                      'This will likely lead to exploding gradients.')
+    if options.true_grad_clipping > 6.0:
+        warnings.warn('Gradient clipping norm is unusually high (%s). '
+                      'This could lead to exploding gradients.' % options.true_grad_clipping)
+    if options.listener_nonlinearity == 'rectify':
+        warnings.warn('Using ReLU as the output nonlinearity for a recurrent unit. This may '
+                      'be a source of NaNs in the gradient.')
 
 
 LISTENERS = {

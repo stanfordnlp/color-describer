@@ -45,7 +45,7 @@ parser.add_argument('--monitor_grads', action='store_true',
 parser.add_argument('--monitor_params', action='store_true',
                     help='If `True`, write parameter value histograms out to the '
                          'TensorBoard events file.')
-parser.add_argument('--true_grad_clipping', type=float, default=0.0,
+parser.add_argument('--true_grad_clipping', type=float, default=5.0,
                     help='The maximum absolute value of all gradients. This gradient '
                          'clipping is performed on the full gradient calculation, not '
                          'just the messages passing through the LSTM.')
