@@ -193,12 +193,7 @@ def web_color(hsv):
 
 
 def generate_html_reports(dirname=None):
-    try:
-        options = config.options()
-    except config.OverwriteError:
-        # rundir creation will fail, but the options object is populated anyway.
-        # Ignore the exception and get it. (TODO: There should be a flag to do this...)
-        options = config.options()
+    options = config.options(read=True)
     dirname = dirname or options.run_dir
 
     config_dict = load_dict(os.path.join(dirname, 'config.json'))
