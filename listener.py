@@ -3,8 +3,7 @@ import theano
 import theano.tensor as T
 import warnings
 from collections import Counter
-from lasagne.layers import InputLayer, DropoutLayer, DenseLayer, EmbeddingLayer
-from lasagne.layers import BiasLayer, NonlinearityLayer
+from lasagne.layers import InputLayer, DropoutLayer, DenseLayer, EmbeddingLayer, NonlinearityLayer
 from lasagne.layers.recurrent import Gate
 from lasagne.init import Constant
 from lasagne.objectives import categorical_crossentropy
@@ -342,7 +341,7 @@ class AtomicListenerLearner(ListenerLearner):
                                     name=id_tag + 'desc_embed')
 
         if options.listener_cell_size == 0:
-            l_scores = BiasLayer(l_in_embed, name=id_tag + 'bias')
+            l_scores = l_in_embed  # BiasLayer(l_in_embed, name=id_tag + 'bias')
         else:
             l_hidden = DenseLayer(l_in_embed, num_units=options.listener_cell_size,
                                   nonlinearity=NONLINEARITIES[options.listener_nonlinearity],

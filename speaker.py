@@ -3,7 +3,7 @@ import theano.tensor as T
 import warnings
 from theano.tensor.nnet import crossentropy_categorical_1hot
 from lasagne.layers import InputLayer, DropoutLayer, EmbeddingLayer, NonlinearityLayer
-from lasagne.layers import ConcatLayer, ReshapeLayer, DenseLayer, BiasLayer, get_output
+from lasagne.layers import ConcatLayer, ReshapeLayer, DenseLayer, get_output
 from lasagne.layers.recurrent import Gate
 from lasagne.init import Constant
 from lasagne.nonlinearities import softmax
@@ -464,7 +464,7 @@ class AtomicSpeakerLearner(NeuralLearner):
                                        name=id_tag + 'color_embed')
 
         if options.speaker_cell_size == 0:
-            l_scores = BiasLayer(l_color_embed, name=id_tag + 'bias')
+            l_scores = l_color_embed  # BiasLayer(l_color_embed, name=id_tag + 'bias')
         else:
             if options.speaker_dropout > 0.0:
                 l_color_drop = DropoutLayer(l_color_embed, p=options.speaker_dropout,
