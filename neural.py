@@ -515,6 +515,8 @@ class SimpleLasagneModel(object):
                 inputs, targets, synth = batch
                 monitored = self.train_fn(*inputs + targets + synth)
                 for tag, value in zip(self.monitored_tags, monitored):
+                    if options.verbosity >= 10:
+                        print('%s: %s' % (tag, value))
                     history_epoch[tag].append(value)
             progress.end_task()
 
