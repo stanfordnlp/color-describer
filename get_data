@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -o errexit
+shopt -s failglob
+
+if [[ "$#" != "1" ]]; then
+  echo 'Usage: get_data <run_dir>'
+  exit -2
+fi
+
+run_dir="$1"
+cd "$run_dir"
+
+l_data="$(echo ../data_l/data.*.jsons)"
+s_data="$(echo ../data_s/data.*.jsons)"
+
+if [[ $(grep '"listener": true,' config.json) ]]; then
+  data="$l_data"
+else
+  data="$s_data"
+fi
+
+for data_path in $data; do
+  filename="$(basename "$data_path")"
+  ln -s "$data_path" "$filename"
+done
