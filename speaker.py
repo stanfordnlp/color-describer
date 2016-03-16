@@ -14,7 +14,8 @@ from stanza.unstable import config, progress, iterators
 from stanza.unstable.rng import get_rng
 from neural import NeuralLearner, SimpleLasagneModel
 from neural import NONLINEARITIES, OPTIMIZERS, CELLS, sample
-from vectorizers import SequenceVectorizer, SymbolVectorizer, BucketsVectorizer, RawVectorizer
+from vectorizers import SequenceVectorizer, SymbolVectorizer
+from vectorizers import BucketsVectorizer, RawVectorizer, MSVectorizer
 
 parser = config.get_options_parser()
 parser.add_argument('--speaker_cell_size', type=int, default=20,
@@ -67,6 +68,7 @@ parser.add_argument('--speaker_grad_clipping', type=float, default=0.0,
 COLOR_REPRS = {
     'raw': RawVectorizer,
     'buckets': BucketsVectorizer,
+    'ms': MSVectorizer,
 }
 
 parser.add_argument('--speaker_color_repr', choices=COLOR_REPRS.keys(), default='buckets',

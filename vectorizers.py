@@ -3,9 +3,10 @@ import numpy as np
 import operator
 import theano.tensor as T
 from collections import Sequence
-from lasagne.layers import InputLayer, EmbeddingLayer, NINLayer, dimshuffle
+from lasagne.layers import InputLayer, EmbeddingLayer, NINLayer, reshape, dimshuffle
 from matplotlib.colors import hsv_to_rgb
 
+import learners
 from neural import NONLINEARITIES
 from stanza.unstable import config
 from stanza.unstable.rng import get_rng
@@ -377,6 +378,92 @@ class BucketsVectorizer(ColorVectorizer):
         l_hidden_color = (l_color_embed
                           if recurrent_length == 0 else
                           dimshuffle(l_color_embed, (0, 2, 1)))
+        for i in range(1, options.speaker_hidden_color_layers + 1):
+            l_hidden_color = NINLayer(l_hidden_color, num_units=options.speaker_cell_size,
+                                      nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
+                                      name=id_tag + 'hidden_color%d' % i)
+        l_hidden_color = (l_hidden_color
+                          if recurrent_length == 0 else
+                          dimshuffle(l_hidden_color, (0, 2, 1)))
+        return l_hidden_color, [l_color]
+
+
+class MSVectorizer(ColorVectorizer):
+    '''
+    Maps colors to several overlaid uniform grid of buckets with
+    different resolutions, and concatenates these representations.
+    '''
+    def __init__(self, resolution='ignored', hsv='ignored'):
+        self.num_types = np.prod(learners.HistogramLearner.GRANULARITY[0])
+        self.buckets = [BucketsVectorizer(res, hsv=True)
+                        for res in learners.HistogramLearner.GRANULARITY]
+
+    def vectorize(self, color, hsv=None):
+        '''
+        :param color: An length-3 vector or 1D array-like object containing
+                      color coordinates.
+        :param bool hsv: If `True`, input is assumed to be in HSV space in the range
+                         [0, 360], [0, 100], [0, 100]; if `False`, input should be in RGB
+                         space in the range [0, 256). `None` (default) means take the
+                         color space from the value given to the constructor.
+        :return int: The bucket id for `color`
+
+        >>> MSVectorizer().vectorize((255, 0, 0), hsv=False)
+        ... # RGB (0, 0, 255) = HSV (0, 100, 100)
+        array([   99,  9024, 10125], dtype=int32)
+        >>> MSVectorizer().vectorize((240, 100, 100))
+        array([ 6099,  9774, 10125], dtype=int32)
+        '''
+        buckets = np.array([b.vectorize(color, hsv=hsv) for b in self.buckets], dtype=np.int32)
+        prev = np.array([0] + [b.num_types for b in self.buckets[:-1]])
+        return buckets + np.cumsum(prev, dtype=np.int32)
+
+    def unvectorize(self, bucket, random=False, hsv=None):
+        '''
+        :param int bucket: The ids of the color buckets for each resolution
+        :param random: If `True`, sample a random color from the bucket. Otherwise,
+                       return the center of the bucket.
+        :param hsv: If `True`, return colors in HSV format [0 <= hue <= 360,
+                    0 <= sat <= 100, 0 <= val <= 100]; if `False`, RGB
+                    [0 <= r/g/b <= 256]. `None` (default) means take the
+                    color space from the value given to the constructor.
+        :return tuple(int): A color from the bucket with ids `bucket`. Note that
+                            only the id from the highest-resolution grid is
+                            used to identify the bucket (the others are redundant).
+
+        >>> MSVectorizer().unvectorize([99, 9024, 10125], hsv=False)
+        (243, 19, 12)
+        >>> MSVectorizer().unvectorize([6099, 9774, 10125])
+        (242, 95, 95)
+        '''
+        return self.buckets[0].unvectorize(bucket[0], random=random, hsv=hsv)
+
+    def visualize_distribution(self, dist):
+        return self.buckets[0].visualize_distribution(dist)
+
+    def get_input_vars(self, id=None, recurrent=False):
+        id_tag = (id + '/') if id else ''
+        return [(T.itensor3 if recurrent else T.imatrix)(id_tag + 'colors')]
+
+    def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20, id=None):
+        options = config.options()
+        id_tag = (id + '/') if id else ''
+        (input_var,) = input_vars
+        shape = ((None, len(self.buckets))
+                 if recurrent_length == 0 else
+                 (None, recurrent_length, len(self.buckets)))
+        l_color = InputLayer(shape=shape, input_var=input_var,
+                             name=id_tag + 'color_input')
+        l_color_embed = EmbeddingLayer(l_color, input_size=sum(b.num_types for b in self.buckets),
+                                       output_size=cell_size,
+                                       name=id_tag + 'color_embed')
+
+        dims = (([0], -1) if recurrent_length == 0 else ([0], [1], -1))
+        l_color_flattened = reshape(l_color_embed, dims)
+
+        l_hidden_color = (l_color_flattened
+                          if recurrent_length == 0 else
+                          dimshuffle(l_color_flattened, (0, 2, 1)))
         for i in range(1, options.speaker_hidden_color_layers + 1):
             l_hidden_color = NINLayer(l_hidden_color, num_units=options.speaker_cell_size,
                                       nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
