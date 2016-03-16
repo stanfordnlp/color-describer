@@ -3,7 +3,8 @@ import theano.tensor as T
 from collections import OrderedDict
 
 from stanza.unstable import config
-from neural import SimpleLasagneModel, NeuralLearner, OPTIMIZERS
+from neural import SimpleLasagneModel, NeuralLearner, SequenceVectorizer, BucketsVectorizer
+from neural import OPTIMIZERS
 from listener import LISTENERS
 from speaker import SPEAKERS
 
@@ -406,13 +407,14 @@ class RSAGraphModel(SimpleLasagneModel):
 class RSALearner(NeuralLearner):
     def __init__(self, id=None):
         self.init_submodels(id)
+        super(RSALearner, self).__init__(id=id)
 
         options = config.options()
-
         color_resolution = (options.listener_color_resolution
                             if options.listener else
                             options.speaker_color_resolution)
-        super(RSALearner, self).__init__(color_resolution=color_resolution, id=id)
+        self.seq_vec = SequenceVectorizer()
+        self.color_vec = BucketsVectorizer(color_resolution, hsv=options.speaker_hsv)
 
     def init_submodels(self, id=None):
         options = config.options()

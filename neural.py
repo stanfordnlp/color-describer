@@ -7,7 +7,8 @@ import theano.tensor as T
 import theano.sandbox.cuda.basic_ops as G
 import time
 from collections import Sequence, OrderedDict
-from lasagne.layers import get_output, get_all_params
+from lasagne.layers import InputLayer, EmbeddingLayer, NINLayer
+from lasagne.layers import get_output, get_all_params, dimshuffle
 from lasagne.updates import total_norm_constraint
 from matplotlib.colors import hsv_to_rgb
 from theano.compile import MonitorMode
@@ -204,26 +205,118 @@ class SequenceVectorizer(object):
         return self.unvectorize(sequences)
 
 
-class ColorVectorizer(object):
+RANGES_RGB = (256.0, 256.0, 256.0)
+RANGES_HSV = (360.0, 101.0, 101.0)
+C_EPSILON = 1e-4
+
+
+class Vectorizer(object):
+    def vectorize_all(self, colors, hsv=None):
+        '''
+        :param colors: A sequence of length-3 vectors or 1D array-like objects containing
+                      RGB coordinates in the range [0, 256).
+        :param bool hsv: If `True`, input is assumed to be in HSV space in the range
+                         [0, 360], [0, 100], [0, 100]; if `False`, input should be in RGB
+                         space in the range [0, 256). `None` (default) means take the
+                         color space from the value given to the constructor.
+        :return np.ndarray: An array of the vectorized form of each color in `colors`
+                            (first dimension is the index of the color in the `colors`).
+
+        >>> BucketsVectorizer((2, 2, 2)).vectorize_all([(0, 0, 0), (255, 0, 0)])
+        array([0, 4], dtype=int32)
+        '''
+        return np.array([self.vectorize(c, hsv=hsv) for c in colors])
+
+    def unvectorize_all(self, colors, random=False, hsv=None):
+        '''
+        :param Sequence colors: An array or sequence of vectorized colors
+        :param random: If true, sample a random color from each bucket. Otherwise,
+                       return the center of the bucket. Some vectorizers map colors
+                       one-to-one to vectorized versions; these vectorizers will
+                       ignore the `random` argument.
+        :param hsv: If `True`, return colors in HSV format; otherwise, RGB.
+                    `None` (default) means take the color space from the value
+                    given to the constructor.
+        :return list(tuple(int)): The unvectorized version of each color in `colors`
+
+        >>> BucketsVectorizer((2, 2, 2)).unvectorize_all([0, 4])
+        [(64, 64, 64), (192, 64, 64)]
+        >>> BucketsVectorizer((2, 2, 2)).unvectorize_all([0, 4], hsv=True)
+        [(0, 0, 25), (0, 67, 75)]
+        '''
+        return [self.unvectorize(c, random=random, hsv=hsv) for c in colors]
+
+    def visualize_distribution(self, dist):
+        '''
+        :param dist: A distribution over the buckets defined by this vectorizer
+        :type dist: array-like with shape `(self.num_types,)``
+        :return images: `list(`3-D `np.array` with `shape[2] == 3)`, three images
+            with the last dimension being the channels (RGB) of cross-sections
+            along each axis, showing the strength of the distribution as the
+            intensity of the channel perpendicular to the cross-section.
+        '''
+        raise NotImplementedError
+
+    def get_input_vars(self, id=None, recurrent=False):
+        '''
+        :param id: The string tag to use as a prefix in the variable names.
+            If `None`, no prefix will be added. (Passing an empty string will
+            result in adding a bare `'/'`, which is legal but probably not what
+            you want.)
+        :type id: str or None
+        :param bool recurrent: If `True`, return input variables reflecting
+            copying the input `k` times, where `k` is the recurrent sequence
+            length. This means the input variables will have one more dimension
+            than they would if they were input to a simple feed-forward layer.
+        :return list(T.TensorVariable): The variables that should feed into the
+            color component of the input layer of a neural network using this
+            vectorizer.
+        '''
+        id_tag = (id + '/') if id else ''
+        return [(T.imatrix if recurrent else T.ivector)(id_tag + 'colors')]
+
+    def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20, id=None):
+        '''
+        :param input_vars: The input variables returned from
+            `get_input_vars`.
+        :type input_vars: list(T.TensorVariable)
+        :param recurrent_length: The number of steps to copy color representations
+            for input to a recurrent unit. If `None`, allow variable lengths; if 0,
+            produce output for a non-recurrent layer (this will create an input layer
+            producing a tensor of rank one lower than the recurrent version).
+        :type recurrent_length: int or None
+        :param int cell_size: The number of dimensions of the final color representation.
+        :param id: The string tag to use as a prefix in the layer names.
+            If `None`, no prefix will be added. (Passing an empty string will
+            result in adding a bare `'/'`, which is legal but probably not what
+            you want.)
+        :return Lasagne.Layer, list(Lasagne.Layer): The layer producing the color
+            representation, and the list of input layers corresponding to each of
+            the input variables (in the same order).
+        '''
+        raise NotImplementedError(self.get_input_layer)
+
+
+class BucketsVectorizer(Vectorizer):
     '''
     Maps colors to a uniform grid of buckets.
     '''
-    RANGES_RGB = (256.0, 256.0, 256.0)
-    RANGES_HSV = (360.0, 100.0, 100.0)
-
     def __init__(self, resolution, hsv=False):
         '''
-        :param resolution: A length-3 sequence giving numbers of buckets along each
-                           dimension of the RGB grid.
+        :param resolution: A length-1 or length-3 sequence giving numbers of buckets
+                           along each dimension of the RGB/HSV grid. If length-1, all
+                           three dimensions will use the same number of buckets.
         :param bool hsv: If `True`, buckets will be laid out in a grid in HSV space;
                          otherwise, the grid will be in RGB space. Input and output
                          color spaces can be configured on a per-call basis by
                          using the `hsv` parameter of `vectorize` and `unvectorize`.
         '''
+        if len(resolution) == 1:
+            resolution = resolution * 3
         self.resolution = resolution
         self.num_types = reduce(operator.mul, resolution)
         self.hsv = hsv
-        ranges = self.RANGES_HSV if hsv else self.RANGES_RGB
+        ranges = RANGES_HSV if hsv else RANGES_RGB
         self.bucket_sizes = tuple(d / r for d, r in zip(ranges, resolution))
 
     def vectorize(self, color, hsv=None):
@@ -236,19 +329,19 @@ class ColorVectorizer(object):
                          color space from the value given to the constructor.
         :return int: The bucket id for `color`
 
-        >>> ColorVectorizer((2, 2, 2)).vectorize((0, 0, 0))
+        >>> BucketsVectorizer((2, 2, 2)).vectorize((0, 0, 0))
         0
-        >>> ColorVectorizer((2, 2, 2)).vectorize((255, 0, 0))
+        >>> BucketsVectorizer((2, 2, 2)).vectorize((255, 0, 0))
         4
-        >>> ColorVectorizer((2, 2, 2)).vectorize((240, 100, 100), hsv=True)
+        >>> BucketsVectorizer((2, 2, 2)).vectorize((240, 100, 100), hsv=True)
         ... # HSV (240, 100, 100) = RGB (0, 0, 255)
         1
-        >>> ColorVectorizer((2, 2, 2), hsv=True).vectorize((0, 0, 0))
+        >>> BucketsVectorizer((2, 2, 2), hsv=True).vectorize((0, 0, 0))
         0
-        >>> ColorVectorizer((2, 2, 2), hsv=True).vectorize((240, 0, 0))
+        >>> BucketsVectorizer((2, 2, 2), hsv=True).vectorize((240, 0, 0))
         ... # yes, this is also black. Using HSV buckets is a questionable decision.
         4
-        >>> ColorVectorizer((2, 2, 2), hsv=True).vectorize((0, 255, 0), hsv=False)
+        >>> BucketsVectorizer((2, 2, 2), hsv=True).vectorize((0, 255, 0), hsv=False)
         ... # RGB (0, 255, 0) = HSV (120, 100, 100)
         3
         '''
@@ -257,38 +350,22 @@ class ColorVectorizer(object):
 
         if hsv and not self.hsv:
             c_hsv = color
-            c_rgb_0_1 = colorsys.hsv_to_rgb(*(d * 1.0 / r for d, r in zip(c_hsv, self.RANGES_HSV)))
+            c_rgb_0_1 = colorsys.hsv_to_rgb(*(d * 1.0 / r for d, r in zip(c_hsv, RANGES_HSV)))
             color_internal = tuple(int(d * 255.99) for d in c_rgb_0_1)
         elif not hsv and self.hsv:
             c_rgb = color
             c_hsv_0_1 = colorsys.rgb_to_hsv(*(d / 256.0 for d in c_rgb))
-            color_internal = tuple(int(d * (r - 0.01)) for d, r in zip(c_hsv_0_1, self.RANGES_HSV))
+            color_internal = tuple(int(d * (r - C_EPSILON)) for d, r in zip(c_hsv_0_1, RANGES_HSV))
         else:
-            ranges = self.RANGES_HSV if self.hsv else self.RANGES_RGB
-            color_internal = tuple(min(d, r - 0.01) for d, r in zip(color, ranges))
+            ranges = RANGES_HSV if self.hsv else RANGES_RGB
+            color_internal = tuple(min(d, r - C_EPSILON) for d, r in zip(color, ranges))
 
         bucket_dims = [int(e // r) for e, r in zip(color_internal, self.bucket_sizes)]
         result = (bucket_dims[0] * self.resolution[1] * self.resolution[2] +
                   bucket_dims[1] * self.resolution[2] +
                   bucket_dims[2])
         assert (0 <= result < self.num_types), (color, result)
-        return result
-
-    def vectorize_all(self, colors, hsv=None):
-        '''
-        :param colors: A sequence of length-3 vectors or 1D array-like objects containing
-                      RGB coordinates in the range [0, 256).
-        :param random: If true, sample a random color from the bucket
-        :param bool hsv: If `True`, input is assumed to be in HSV space in the range
-                         [0, 360], [0, 100], [0, 100]; if `False`, input should be in RGB
-                         space in the range [0, 256). `None` (default) means take the
-                         color space from the value given to the constructor.
-        :return array(int32): The bucket ids for each color in `colors`
-
-        >>> ColorVectorizer((2, 2, 2)).vectorize_all([(0, 0, 0), (255, 0, 0)])
-        array([0, 4], dtype=int32)
-        '''
-        return np.array([self.vectorize(c, hsv=hsv) for c in colors], dtype=np.int32)
+        return np.int32(result)
 
     def unvectorize(self, bucket, random=False, hsv=None):
         '''
@@ -301,18 +378,18 @@ class ColorVectorizer(object):
                     color space from the value given to the constructor.
         :return tuple(int): A color from the bucket with id `bucket`.
 
-        >>> ColorVectorizer((2, 2, 2)).unvectorize(0)
+        >>> BucketsVectorizer((2, 2, 2)).unvectorize(0)
         (64, 64, 64)
-        >>> ColorVectorizer((2, 2, 2)).unvectorize(4)
+        >>> BucketsVectorizer((2, 2, 2)).unvectorize(4)
         (192, 64, 64)
-        >>> ColorVectorizer((2, 2, 2)).unvectorize(4, hsv=True)
-        (0, 66, 75)
-        >>> ColorVectorizer((2, 2, 2), hsv=True).unvectorize(0)
+        >>> BucketsVectorizer((2, 2, 2)).unvectorize(4, hsv=True)
+        (0, 67, 75)
+        >>> BucketsVectorizer((2, 2, 2), hsv=True).unvectorize(0)
         (90, 25, 25)
-        >>> ColorVectorizer((2, 2, 2), hsv=True).unvectorize(4)
+        >>> BucketsVectorizer((2, 2, 2), hsv=True).unvectorize(4)
         (270, 25, 25)
-        >>> ColorVectorizer((2, 2, 2), hsv=True).unvectorize(4, hsv=False)
-        (56, 48, 64)
+        >>> BucketsVectorizer((2, 2, 2), hsv=True).unvectorize(4, hsv=False)
+        (55, 47, 63)
         '''
         if hsv is None:
             hsv = self.hsv
@@ -326,45 +403,21 @@ class ColorVectorizer(object):
                       for d, size in zip(bucket_start, self.bucket_sizes))
         if self.hsv:
             c_hsv = tuple(int(d) for d in color)
-            c_rgb_0_1 = colorsys.hsv_to_rgb(*(d * 1.0 / r for d, r in zip(color, self.RANGES_HSV)))
+            c_rgb_0_1 = colorsys.hsv_to_rgb(*(d * 1.0 / r for d, r in zip(color, RANGES_HSV)))
             c_rgb = tuple(int(d * 256.0) for d in c_rgb_0_1)
         else:
             c_rgb = tuple(int(d) for d in color)
             c_hsv_0_1 = colorsys.rgb_to_hsv(*(d / 256.0 for d in color))
-            c_hsv = tuple(int(d * r) for d, r in zip(c_hsv_0_1, self.RANGES_HSV))
+            c_hsv = tuple(int(d * r) for d, r in zip(c_hsv_0_1, RANGES_HSV))
 
         if hsv:
             return c_hsv
         else:
             return c_rgb
 
-    def unvectorize_all(self, buckets, random=False, hsv=None):
-        '''
-        :param Sequence(int) buckets: A sequence of ids of color buckets
-        :param random: If true, sample a random color from each bucket. Otherwise,
-                       return the center of the bucket.
-        :param hsv: If `True`, return colors in HSV format; otherwise, RGB.
-                    `None` (default) means take the color space from the value
-                    given to the constructor.
-        :return list(tuple(int)): One color from each bucket in `buckets`
-
-        >>> ColorVectorizer((2, 2, 2)).unvectorize_all([0, 4])
-        [(64, 64, 64), (192, 64, 64)]
-        >>> ColorVectorizer((2, 2, 2)).unvectorize_all([0, 4], hsv=True)
-        [(0, 0, 25), (0, 66, 75)]
-        '''
-        return [self.unvectorize(b, random=random, hsv=hsv) for b in buckets]
-
     def visualize_distribution(self, dist):
         '''
-        :param dist: A distribution over the buckets defined by this vectorizer
-        :type dist: array-like with shape `(self.num_types,)``
-        :return images: `list(`3-D `np.array` with `shape[2] == 3)`, three images
-            with the last dimension being the channels (RGB) of cross-sections
-            along each axis, showing the strength of the distribution as the
-            intensity of the channel perpendicular to the cross-section.
-
-        >>> ColorVectorizer((2, 2, 2)).visualize_distribution([0, 0.25, 0, 0.5,
+        >>> BucketsVectorizer((2, 2, 2)).visualize_distribution([0, 0.25, 0, 0.5,
         ...                                                    0, 0, 0, 0.25])
         ... # doctest: +NORMALIZE_WHITESPACE
         [array([[[  0,  64,  64], [ 85,  64, 192]],
@@ -377,7 +430,7 @@ class ColorVectorizer(object):
         dist_3d = np.asarray(dist).reshape(self.resolution)
         # Compute background: RGB/HSV for each bucket along each face with one channel set to 0
         x, y, z = self.bucket_sizes
-        ranges = self.RANGES_HSV if self.hsv else self.RANGES_RGB
+        ranges = RANGES_HSV if self.hsv else RANGES_RGB
         rx, ry, rz = ranges
         images = [
             np.array(
@@ -394,13 +447,147 @@ class ColorVectorizer(object):
             xsection = dist_3d.sum(axis=axis)
             xsection /= xsection.max()
             if self.hsv:
-                im_float = images[axis].astype(np.float) / np.array(self.RANGES_HSV)
+                im_float = images[axis].astype(np.float) / np.array(RANGES_HSV)
                 im_float[:, :, axis] = xsection
                 images[axis] = (hsv_to_rgb(im_float) *
-                                (np.array(self.RANGES_RGB) - 0.01)).astype(np.int)
+                                (np.array(RANGES_RGB) - C_EPSILON)).astype(np.int)
             else:
-                images[axis][:, :, axis] = (xsection * (ranges[axis] - 0.01)).astype(np.int)
+                images[axis][:, :, axis] = (xsection * (ranges[axis] - C_EPSILON)).astype(np.int)
         return images
+
+    def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20, id=None):
+        options = config.options()
+        id_tag = (id + '/') if id else ''
+        (input_var,) = input_vars
+        shape = (None,) if recurrent_length == 0 else (None, recurrent_length)
+        l_color = InputLayer(shape=shape, input_var=input_var,
+                             name=id_tag + 'color_input')
+        l_color_embed = EmbeddingLayer(l_color, input_size=self.num_types,
+                                       output_size=cell_size,
+                                       name=id_tag + 'color_embed')
+        l_hidden_color = (l_color_embed
+                          if recurrent_length == 0 else
+                          dimshuffle(l_color_embed, (0, 2, 1)))
+        for i in range(1, options.speaker_hidden_color_layers + 1):
+            l_hidden_color = NINLayer(l_hidden_color, num_units=options.speaker_cell_size,
+                                      nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
+                                      name=id_tag + 'hidden_color%d' % i)
+        l_hidden_color = (l_hidden_color
+                          if recurrent_length == 0 else
+                          dimshuffle(l_hidden_color, (0, 2, 1)))
+        return l_hidden_color, [l_color]
+
+
+class RawVectorizer(Vectorizer):
+    '''
+    Vectorizes colors with the identity function (each color is simply represented
+    by its raw 3-dimensional vector, RGB or HSV).
+    '''
+    def __init__(self, resolution='ignored', hsv=False):
+        '''
+        :param bool hsv: If `True`, the internal representation used by the vectorizer
+                         will be HSV. Input and output color spaces can be configured
+                         on a per-call basis by using the `hsv` parameter of
+                         `vectorize` and `unvectorize`.
+        '''
+        if hsv:
+            resolution = (360, 101, 101)
+        else:
+            resolution = (256, 256, 256)
+        self.num_types = reduce(operator.mul, resolution)
+        self.hsv = hsv
+
+    def vectorize(self, color, hsv=None):
+        '''
+        :param color: An length-3 vector or 1D array-like object containing
+                      color coordinates.
+        :param bool hsv: If `True`, input is assumed to be in HSV space in the range
+                         [0, 359], [0, 100], [0, 100]; if `False`, input should be in RGB
+                         space in the range [0, 255]. `None` (default) means take the
+                         color space from the value given to the constructor.
+        :return np.ndarray: The color in the internal representation of the vectorizer,
+                            a vector of shape (3,). The values of this vector will be
+                            scaled and shifted to lie in the range [-1, 1].
+
+        >>> RawVectorizer().vectorize((255, 0, 0))
+        array([ 1., -1., -1.])
+        >>> RawVectorizer().vectorize((0, 100, 100), hsv=True)
+        array([ 1., -1., -1.])
+        >>> RawVectorizer(hsv=True).vectorize((0, 100, 100))
+        array([-1.,  1.,  1.])
+        >>> RawVectorizer(hsv=True).vectorize((255, 0, 0), hsv=False)
+        array([-1.,  1.,  1.])
+        '''
+        if hsv is None:
+            hsv = self.hsv
+
+        if hsv and not self.hsv:
+            c_hsv = color
+            color_0_1 = colorsys.hsv_to_rgb(*(d / (r - 1.0) for d, r in zip(c_hsv, RANGES_HSV)))
+        elif not hsv and self.hsv:
+            c_rgb = color
+            color_0_1 = colorsys.rgb_to_hsv(*(d / (r - 1.0) for d, r in zip(c_rgb, RANGES_RGB)))
+        else:
+            ranges = RANGES_HSV if self.hsv else RANGES_RGB
+            color_0_1 = tuple(d / (r - 1.0) for d, r in zip(color, ranges))
+        color_internal = tuple(d * 2.0 - 1.0 for d in color_0_1)
+
+        return np.array(color_internal)
+
+    def unvectorize(self, color, random='ignored', hsv=None):
+        '''
+        :param np.ndarray color: A vectorized color in the internal color space
+        :param hsv: If `True`, return colors in HSV format [0 <= hue <= 360,
+                    0 <= sat <= 100, 0 <= val <= 100]; if `False`, RGB
+                    [0 <= r/g/b <= 256]. `None` (default) means take the
+                    color space from the value given to the constructor.
+        :return tuple(int): The color in the requested output space,
+                            in the range [0, 255] for RGB and
+                            [0, 359], [0, 100], [0, 100] for HSV.
+
+        >>> RawVectorizer().unvectorize((1., -1., -1.))
+        (255, 0, 0)
+        >>> RawVectorizer().unvectorize((1., -1., -1.), hsv=True)
+        (0, 100, 100)
+        >>> RawVectorizer(hsv=True).unvectorize((-1., 1., 1.))
+        (0, 100, 100)
+        >>> RawVectorizer(hsv=True).unvectorize((-1., 1., 1.), hsv=False)
+        (255, 0, 0)
+        '''
+        if hsv is None:
+            hsv = self.hsv
+        color_0_1 = tuple((d + 1.0) / 2.0 for d in color)
+        if self.hsv:
+            c_hsv = tuple(int(d * (r - C_EPSILON)) for d, r in zip(color_0_1, RANGES_HSV))
+            c_rgb_0_1 = colorsys.hsv_to_rgb(*(d for d in color_0_1))
+            c_rgb = tuple(int(d * (r - C_EPSILON)) for d, r in zip(c_rgb_0_1, RANGES_RGB))
+        else:
+            c_rgb = tuple(int(d * (r - C_EPSILON)) for d, r in zip(color_0_1, RANGES_RGB))
+            c_hsv_0_1 = colorsys.rgb_to_hsv(*(d for d in color_0_1))
+            c_hsv = tuple(int(d * (r - C_EPSILON)) for d, r in zip(c_hsv_0_1, RANGES_HSV))
+
+        if hsv:
+            return c_hsv
+        else:
+            return c_rgb
+
+    def get_input_vars(self, id=None, recurrent=False):
+        id_tag = (id + '/') if id else ''
+        return [(T.tensor3 if recurrent else T.matrix)(id_tag + 'colors')]
+
+    def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20, id=None):
+        options = config.options()
+        id_tag = (id + '/') if id else ''
+        (input_var,) = input_vars
+        shape = (None, 3) if recurrent_length == 0 else (None, recurrent_length, 3)
+        l_color = InputLayer(shape=shape, input_var=input_var,
+                             name=id_tag + 'color_input')
+        l_hidden_color = l_color
+        for i in range(1, options.speaker_hidden_color_layers + 1):
+            l_hidden_color = NINLayer(l_hidden_color, num_units=cell_size,
+                                      nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
+                                      name=id_tag + 'hidden_color%d' % i)
+        return l_hidden_color, [l_color]
 
 
 class SimpleLasagneModel(object):
@@ -581,13 +768,8 @@ class NeuralLearner(Learner):
     A base class for Lasagne-based learners.
     '''
 
-    def __init__(self, color_resolution, hsv=False, id=None):
+    def __init__(self, id=None):
         super(NeuralLearner, self).__init__()
-        if len(color_resolution) == 1:
-            color_resolution = color_resolution * 3
-
-        self.seq_vec = SequenceVectorizer()
-        self.color_vec = ColorVectorizer(color_resolution, hsv=hsv)
         self.id = id
 
     def train(self, training_instances, validation_instances=None, metrics=None):
@@ -675,12 +857,14 @@ class NeuralLearner(Learner):
         if not hasattr(self, 'model'):
             raise RuntimeError("trying to pickle a model that hasn't been built yet")
         params = self.params()
+        # TODO: remove references to the vectorizers from this superclass
         return self.seq_vec, self.color_vec, [p.get_value() for p in params], self.id
 
     def __setstate__(self, state):
         self.unpickle(state)
 
     def unpickle(self, state, model_class=SimpleLasagneModel):
+        # TODO: remove references to the vectorizers from this superclass
         if len(state) == 3:
             self.seq_vec, self.color_vec, params_state = state
             self.id = None

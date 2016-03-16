@@ -11,7 +11,8 @@ from lasagne.nonlinearities import softmax
 from lasagne.updates import rmsprop
 
 from stanza.unstable import config, instance, progress, iterators
-from neural import NeuralLearner, SimpleLasagneModel, SymbolVectorizer
+from neural import NeuralLearner, SimpleLasagneModel
+from neural import SequenceVectorizer, BucketsVectorizer, SymbolVectorizer
 from neural import NONLINEARITIES, OPTIMIZERS, CELLS, sample
 
 parser = config.get_options_parser()
@@ -111,10 +112,12 @@ class ListenerLearner(NeuralLearner):
     An LSTM-based listener (guesses colors from descriptions).
     '''
     def __init__(self, id=None):
+        super(ListenerLearner, self).__init__(id=id)
         options = config.options()
         self.word_counts = Counter()
-        super(ListenerLearner, self).__init__(options.listener_color_resolution,
-                                              options.listener_hsv, id=id)
+        self.seq_vec = SequenceVectorizer()
+        self.color_vec = BucketsVectorizer(options.speaker_color_resolution,
+                                           hsv=options.speaker_hsv)
 
     def predict_and_score(self, eval_instances, random=False, verbosity=0):
         options = config.options()

@@ -6,7 +6,7 @@ from stanza.unstable import progress, config
 from lux import LuxLearner
 from listener import ListenerLearner, AtomicListenerLearner
 from speaker import SpeakerLearner, AtomicSpeakerLearner
-from neural import ColorVectorizer
+from neural import BucketsVectorizer
 from rsa import RSALearner
 
 
@@ -224,7 +224,7 @@ class LookupLearner(Learner):
         if self.res and self.res[0]:
             if len(self.res) == 1:
                 self.res = self.res * 3
-            self.color_vec = ColorVectorizer(self.res, hsv=self.hsv)
+            self.color_vec = BucketsVectorizer(self.res, hsv=self.hsv)
             self.vectorize = lambda c: self.color_vec.vectorize(c, hsv=True)
             self.unvectorize = lambda c: self.color_vec.unvectorize(c, hsv=True)
             self.score_adjustment = -np.log((256.0 ** 3) / self.color_vec.num_types)
