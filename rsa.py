@@ -3,7 +3,8 @@ import theano.tensor as T
 from collections import OrderedDict
 
 from stanza.unstable import config
-from neural import SimpleLasagneModel, NeuralLearner, SequenceVectorizer, BucketsVectorizer
+from neural import SimpleLasagneModel, NeuralLearner
+from vectorizers import SequenceVectorizer, BucketsVectorizer
 from neural import OPTIMIZERS
 from listener import LISTENERS
 from speaker import SPEAKERS

@@ -13,8 +13,8 @@ from lasagne.updates import rmsprop
 from stanza.unstable import config, progress, iterators
 from stanza.unstable.rng import get_rng
 from neural import NeuralLearner, SimpleLasagneModel
-from neural import SequenceVectorizer, SymbolVectorizer, BucketsVectorizer, RawVectorizer
 from neural import NONLINEARITIES, OPTIMIZERS, CELLS, sample
+from vectorizers import SequenceVectorizer, SymbolVectorizer, BucketsVectorizer, RawVectorizer
 
 parser = config.get_options_parser()
 parser.add_argument('--speaker_cell_size', type=int, default=20,

@@ -6,7 +6,7 @@ from stanza.unstable import progress, config
 from lux import LuxLearner
 from listener import ListenerLearner, AtomicListenerLearner
 from speaker import SpeakerLearner, AtomicSpeakerLearner
-from neural import BucketsVectorizer
+from vectorizers import BucketsVectorizer
 from rsa import RSALearner
 
 
