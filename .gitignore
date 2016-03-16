@@ -30,3 +30,5 @@ activate
 
 # minimal subset for Tensorboard logging
 /tensorflow
+
+nosetests.json
