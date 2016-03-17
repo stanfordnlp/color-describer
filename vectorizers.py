@@ -7,7 +7,7 @@ from lasagne.layers import InputLayer, EmbeddingLayer, NINLayer, reshape, dimshu
 from matplotlib.colors import hsv_to_rgb
 
 import learners
-from neural import NONLINEARITIES
+import neural
 from stanza.unstable import config
 from stanza.unstable.rng import get_rng
 
@@ -378,9 +378,10 @@ class BucketsVectorizer(ColorVectorizer):
         l_hidden_color = (l_color_embed
                           if recurrent_length == 0 else
                           dimshuffle(l_color_embed, (0, 2, 1)))
+        NL = neural.NONLINEARITIES
         for i in range(1, options.speaker_hidden_color_layers + 1):
             l_hidden_color = NINLayer(l_hidden_color, num_units=options.speaker_cell_size,
-                                      nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
+                                      nonlinearity=NL[options.speaker_nonlinearity],
                                       name=id_tag + 'hidden_color%d' % i)
         l_hidden_color = (l_hidden_color
                           if recurrent_length == 0 else
@@ -464,9 +465,10 @@ class MSVectorizer(ColorVectorizer):
         l_hidden_color = (l_color_flattened
                           if recurrent_length == 0 else
                           dimshuffle(l_color_flattened, (0, 2, 1)))
+        NL = neural.NONLINEARITIES
         for i in range(1, options.speaker_hidden_color_layers + 1):
             l_hidden_color = NINLayer(l_hidden_color, num_units=options.speaker_cell_size,
-                                      nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
+                                      nonlinearity=NL[options.speaker_nonlinearity],
                                       name=id_tag + 'hidden_color%d' % i)
         l_hidden_color = (l_hidden_color
                           if recurrent_length == 0 else
@@ -579,8 +581,9 @@ class RawVectorizer(ColorVectorizer):
         l_color = InputLayer(shape=shape, input_var=input_var,
                              name=id_tag + 'color_input')
         l_hidden_color = l_color
+        NL = neural.NONLINEARITIES
         for i in range(1, options.speaker_hidden_color_layers + 1):
             l_hidden_color = NINLayer(l_hidden_color, num_units=cell_size,
-                                      nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
+                                      nonlinearity=NL[options.speaker_nonlinearity],
                                       name=id_tag + 'hidden_color%d' % i)
         return l_hidden_color, [l_color]
