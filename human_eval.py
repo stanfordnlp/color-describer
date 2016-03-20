@@ -100,7 +100,7 @@ def get_trial_data(dir_output, size, tag):
 def main():
     options = config.options(read=True)
 
-    wx.App()
+    app = wx.App()  # NOQA: wx needs an App even if we're only showing a few modal dialogs
 
     this_output = html_report.get_output(options.run_dir, options.split)
     this_insts = get_trial_data(this_output, options.test_size, options.run_dir)
