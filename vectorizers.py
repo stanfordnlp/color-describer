@@ -587,6 +587,114 @@ class RawVectorizer(ColorVectorizer):
         return l_hidden_color, [l_color]
 
 
+class FourierVectorizer(ColorVectorizer):
+    '''
+    Vectorizes colors by converting them to a truncated frequency representation.
+    This vectorizer can only vectorize, not unvectorize.
+    '''
+    def __init__(self, resolution, hsv=False):
+        '''
+        :param resolution: The number of dimensions to truncate the frequency
+                           representation (the vectorized representation will be
+                           *twice* this, because the frequency representation uses
+                           complex numbers). Should be an even number between 0 and
+                           the range of each internal color space dimension, or a
+                           length-3 sequence of such numbers.
+        :param bool hsv: If `True`, the internal color space used by the vectorizer
+                         will be HSV. Input and output color spaces can be configured
+                         on a per-call basis by using the `hsv` parameter of
+                         `vectorize` and `unvectorize`.
+        '''
+        if len(resolution) == 1:
+            resolution = resolution * 3
+        self.resolution = resolution
+        self.output_size = np.prod(resolution) * 2
+        self.hsv = hsv
+
+    def vectorize(self, color, hsv=None):
+        '''
+        :param color: An length-3 vector or 1D array-like object containing
+                      color coordinates.
+        :param bool hsv: If `True`, input is assumed to be in HSV space in the range
+                         [0, 360], [0, 100], [0, 100]; if `False`, input should be in RGB
+                         space in the range [0, 255]. `None` (default) means take the
+                         color space from the value given to the constructor.
+        :return np.ndarray: The color in the Fourier representation,
+                            a vector of shape `(prod(resolution) * 2,)`.
+
+        >>> normalize = lambda v: np.where(v.round(2) == 0.0, 0.0, v.round(2))
+        >>> normalize(FourierVectorizer([2]).vectorize((255, 0, 0)))
+        array([ 1.,  1.,  1.,  1., -1., -1., -1., -1.,  0.,  0.,  0.,  0.,  0.,
+                0.,  0.,  0.])
+        >>> normalize(FourierVectorizer([2]).vectorize((180, 100, 100), hsv=True))
+        array([ 1., -1., -1.,  1.,  1., -1., -1.,  1.,  0.,  0.,  0.,  0.,  0.,
+                0.,  0.,  0.])
+        >>> normalize(FourierVectorizer([2], hsv=True).vectorize((0, 100, 100)))
+        array([ 1., -1., -1.,  1.,  1., -1., -1.,  1.,  0.,  0.,  0.,  0.,  0.,
+                0.,  0.,  0.])
+        >>> normalize(FourierVectorizer([2], hsv=True).vectorize((0, 255, 255), hsv=False))
+        array([ 1., -1., -1.,  1., -1.,  1.,  1., -1.,  0.,  0.,  0.,  0.,  0.,
+                0.,  0.,  0.])
+        '''
+        if hsv is None:
+            hsv = self.hsv
+
+        ranges = RANGES_HSV if self.hsv else RANGES_RGB
+        if hsv and not self.hsv:
+            c_hsv = color
+            color_0_1 = colorsys.hsv_to_rgb(*(d / (r - 1.0) for d, r in zip(c_hsv, RANGES_HSV)))
+        elif not hsv and self.hsv:
+            c_rgb = color
+            color_0_1 = colorsys.rgb_to_hsv(*(d / (r - 1.0) for d, r in zip(c_rgb, RANGES_RGB)))
+        else:
+            color_0_1 = tuple(d / (r - 1.0) for d, r in zip(color, ranges))
+
+        # Using a Fourier representation causes colors at the boundary of the
+        # space to behave as if the space is toroidal: red = 255 would be
+        # about the same as red = 0. We don't want this...
+        x, y, z = tuple(d / 2.0 for d in color_0_1)
+        if self.hsv:
+            # ...*except* in the case of HSV: H is in fact a polar coordinate.
+            x *= 2.0
+
+        # ax, ay, az = [np.hstack([np.arange(0, g / 2), np.arange(r - g / 2, r)])
+        #               for g, r in zip(self.resolution, ranges)]
+        ax, ay, az = [np.arange(0, g) for g, r in zip(self.resolution, ranges)]
+        gx, gy, gz = np.meshgrid(ax, ay, az)
+
+        repr_complex = np.exp(-2j * np.pi *
+                              ((x * gx + y * gy + z * gz) % 1.0)).swapaxes(0, 1).flatten()
+        result = np.hstack([repr_complex.real, repr_complex.imag])
+        return result
+
+    def unvectorize(self, color, random='ignored', hsv=None):
+        # Exact unvectorization for the frequency distribution is impossible
+        # unless the representation is not truncated. For now this should
+        # just be a speaker representation.
+        raise NotImplementedError
+
+    def get_input_vars(self, id=None, recurrent=False):
+        id_tag = (id + '/') if id else ''
+        return [(T.tensor3 if recurrent else T.matrix)(id_tag + 'colors')]
+
+    def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20, id=None):
+        options = config.options()
+        id_tag = (id + '/') if id else ''
+        (input_var,) = input_vars
+        shape = ((None, self.output_size)
+                 if recurrent_length == 0 else
+                 (None, recurrent_length, self.output_size))
+        l_color = InputLayer(shape=shape, input_var=input_var,
+                             name=id_tag + 'color_input')
+        l_hidden_color = l_color
+        NL = neural.NONLINEARITIES
+        for i in range(1, options.speaker_hidden_color_layers + 1):
+            l_hidden_color = NINLayer(l_hidden_color, num_units=cell_size,
+                                      nonlinearity=NL[options.speaker_nonlinearity],
+                                      name=id_tag + 'hidden_color%d' % i)
+        return l_hidden_color, [l_color]
+
+
 # neural has to import some of the classes above to keep pickle files readable.
 # Don't let the cycle keep this module from being imported.
 import neural
