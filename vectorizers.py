@@ -6,8 +6,6 @@ from collections import Sequence
 from lasagne.layers import InputLayer, EmbeddingLayer, NINLayer, reshape, dimshuffle
 from matplotlib.colors import hsv_to_rgb
 
-import learners
-import neural
 from stanza.unstable import config
 from stanza.unstable.rng import get_rng
 
@@ -116,7 +114,7 @@ class SequenceVectorizer(object):
 
 
 RANGES_RGB = (256.0, 256.0, 256.0)
-RANGES_HSV = (360.0, 101.0, 101.0)
+RANGES_HSV = (361.0, 101.0, 101.0)
 C_EPSILON = 1e-4
 
 
@@ -412,7 +410,7 @@ class MSVectorizer(ColorVectorizer):
         >>> MSVectorizer().vectorize((255, 0, 0), hsv=False)
         ... # RGB (0, 0, 255) = HSV (0, 100, 100)
         array([   99,  9024, 10125], dtype=int32)
-        >>> MSVectorizer().vectorize((240, 100, 100))
+        >>> MSVectorizer().vectorize((241, 100, 100))
         array([ 6099,  9774, 10125], dtype=int32)
         '''
         buckets = np.array([b.vectorize(color, hsv=hsv) for b in self.buckets], dtype=np.int32)
@@ -500,7 +498,7 @@ class RawVectorizer(ColorVectorizer):
         :param color: An length-3 vector or 1D array-like object containing
                       color coordinates.
         :param bool hsv: If `True`, input is assumed to be in HSV space in the range
-                         [0, 359], [0, 100], [0, 100]; if `False`, input should be in RGB
+                         [0, 360], [0, 100], [0, 100]; if `False`, input should be in RGB
                          space in the range [0, 255]. `None` (default) means take the
                          color space from the value given to the constructor.
         :return np.ndarray: The color in the internal representation of the vectorizer,
@@ -587,3 +585,9 @@ class RawVectorizer(ColorVectorizer):
                                       nonlinearity=NL[options.speaker_nonlinearity],
                                       name=id_tag + 'hidden_color%d' % i)
         return l_hidden_color, [l_color]
+
+
+# neural has to import some of the classes above to keep pickle files readable.
+# Don't let the cycle keep this module from being imported.
+import neural
+import learners
