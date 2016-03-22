@@ -119,10 +119,11 @@ def main():
 
     m = [metrics.squared_error]
 
-    test_results = evaluate.evaluate(human, this_insts, metrics=m)
+    test_results = evaluate.evaluate(human, this_insts, split_id='human_eval', metrics=m)
     output.output_results(test_results, options.run_dir)
     if compare_insts:
-        test_results = evaluate.evaluate(human, compare_insts, metrics=m)
+        test_results = evaluate.evaluate(human, compare_insts,
+                                         split_id='human_eval_compare', metrics=m)
         output.output_results(test_results, options.compare_dir)
 
 
