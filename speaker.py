@@ -2,8 +2,8 @@ import numpy as np
 import theano.tensor as T
 import warnings
 from theano.tensor.nnet import crossentropy_categorical_1hot
-from lasagne.layers import InputLayer, DropoutLayer, EmbeddingLayer, NonlinearityLayer
-from lasagne.layers import ConcatLayer, ReshapeLayer, DenseLayer, get_output
+from lasagne.layers import InputLayer, DropoutLayer, EmbeddingLayer, NonlinearityLayer, NINLayer
+from lasagne.layers import ConcatLayer, ReshapeLayer, DenseLayer, get_output, dimshuffle
 from lasagne.layers.recurrent import Gate
 from lasagne.init import Constant
 from lasagne.nonlinearities import softmax
@@ -256,8 +256,15 @@ class SpeakerLearner(NeuralLearner):
         l_color_repr, color_inputs = self.color_vec.get_input_layer(
             color_input_vars,
             recurrent_length=self.seq_vec.max_len - 1,
+            cell_size=options.speaker_cell_size,
             id=self.id
         )
+        l_hidden_color = dimshuffle(l_color_repr, (0, 2, 1))
+        for i in range(1, options.speaker_hidden_color_layers + 1):
+            l_hidden_color = NINLayer(l_hidden_color, num_units=options.speaker_cell_size,
+                                      nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
+                                      name=id_tag + 'hidden_color%d' % i)
+        l_hidden_color = dimshuffle(l_hidden_color, (0, 2, 1))
 
         l_prev_out = InputLayer(shape=(None, self.seq_vec.max_len - 1),
                                 input_var=prev_output_var,
@@ -483,6 +490,12 @@ class AtomicSpeakerLearner(NeuralLearner):
             cell_size=cell_size,
             id=self.id
         )
+        l_hidden_color = l_color_repr
+        for i in range(1, options.speaker_hidden_color_layers + 1):
+            l_hidden_color = NINLayer(l_hidden_color, num_units=cell_size,
+                                      nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
+                                      name=id_tag + 'hidden_color%d' % i)
+        l_hidden_color = l_hidden_color
 
         if options.speaker_cell_size == 0:
             l_scores = l_color_repr  # BiasLayer(l_color_repr, name=id_tag + 'bias')

@@ -3,10 +3,9 @@ import numpy as np
 import operator
 import theano.tensor as T
 from collections import Sequence
-from lasagne.layers import InputLayer, EmbeddingLayer, NINLayer, reshape, dimshuffle
+from lasagne.layers import InputLayer, EmbeddingLayer, reshape
 from matplotlib.colors import hsv_to_rgb
 
-from stanza.unstable import config
 from stanza.unstable.rng import get_rng
 
 rng = get_rng()
@@ -364,7 +363,6 @@ class BucketsVectorizer(ColorVectorizer):
         return images
 
     def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20, id=None):
-        options = config.options()
         id_tag = (id + '/') if id else ''
         (input_var,) = input_vars
         shape = (None,) if recurrent_length == 0 else (None, recurrent_length)
@@ -373,18 +371,7 @@ class BucketsVectorizer(ColorVectorizer):
         l_color_embed = EmbeddingLayer(l_color, input_size=self.num_types,
                                        output_size=cell_size,
                                        name=id_tag + 'color_embed')
-        l_hidden_color = (l_color_embed
-                          if recurrent_length == 0 else
-                          dimshuffle(l_color_embed, (0, 2, 1)))
-        NL = neural.NONLINEARITIES
-        for i in range(1, options.speaker_hidden_color_layers + 1):
-            l_hidden_color = NINLayer(l_hidden_color, num_units=options.speaker_cell_size,
-                                      nonlinearity=NL[options.speaker_nonlinearity],
-                                      name=id_tag + 'hidden_color%d' % i)
-        l_hidden_color = (l_hidden_color
-                          if recurrent_length == 0 else
-                          dimshuffle(l_hidden_color, (0, 2, 1)))
-        return l_hidden_color, [l_color]
+        return l_color_embed, [l_color]
 
 
 class MSVectorizer(ColorVectorizer):
@@ -445,7 +432,6 @@ class MSVectorizer(ColorVectorizer):
         return [(T.itensor3 if recurrent else T.imatrix)(id_tag + 'colors')]
 
     def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20, id=None):
-        options = config.options()
         id_tag = (id + '/') if id else ''
         (input_var,) = input_vars
         shape = ((None, len(self.buckets))
@@ -460,18 +446,7 @@ class MSVectorizer(ColorVectorizer):
         dims = (([0], -1) if recurrent_length == 0 else ([0], [1], -1))
         l_color_flattened = reshape(l_color_embed, dims)
 
-        l_hidden_color = (l_color_flattened
-                          if recurrent_length == 0 else
-                          dimshuffle(l_color_flattened, (0, 2, 1)))
-        NL = neural.NONLINEARITIES
-        for i in range(1, options.speaker_hidden_color_layers + 1):
-            l_hidden_color = NINLayer(l_hidden_color, num_units=options.speaker_cell_size,
-                                      nonlinearity=NL[options.speaker_nonlinearity],
-                                      name=id_tag + 'hidden_color%d' % i)
-        l_hidden_color = (l_hidden_color
-                          if recurrent_length == 0 else
-                          dimshuffle(l_hidden_color, (0, 2, 1)))
-        return l_hidden_color, [l_color]
+        return l_color_flattened, [l_color]
 
 
 class RawVectorizer(ColorVectorizer):
@@ -572,19 +547,12 @@ class RawVectorizer(ColorVectorizer):
         return [(T.tensor3 if recurrent else T.matrix)(id_tag + 'colors')]
 
     def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20, id=None):
-        options = config.options()
         id_tag = (id + '/') if id else ''
         (input_var,) = input_vars
         shape = (None, 3) if recurrent_length == 0 else (None, recurrent_length, 3)
         l_color = InputLayer(shape=shape, input_var=input_var,
                              name=id_tag + 'color_input')
-        l_hidden_color = l_color
-        NL = neural.NONLINEARITIES
-        for i in range(1, options.speaker_hidden_color_layers + 1):
-            l_hidden_color = NINLayer(l_hidden_color, num_units=cell_size,
-                                      nonlinearity=NL[options.speaker_nonlinearity],
-                                      name=id_tag + 'hidden_color%d' % i)
-        return l_hidden_color, [l_color]
+        return l_color, [l_color]
 
 
 class FourierVectorizer(ColorVectorizer):
@@ -678,7 +646,6 @@ class FourierVectorizer(ColorVectorizer):
         return [(T.tensor3 if recurrent else T.matrix)(id_tag + 'colors')]
 
     def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20, id=None):
-        options = config.options()
         id_tag = (id + '/') if id else ''
         (input_var,) = input_vars
         shape = ((None, self.output_size)
@@ -686,16 +653,9 @@ class FourierVectorizer(ColorVectorizer):
                  (None, recurrent_length, self.output_size))
         l_color = InputLayer(shape=shape, input_var=input_var,
                              name=id_tag + 'color_input')
-        l_hidden_color = l_color
-        NL = neural.NONLINEARITIES
-        for i in range(1, options.speaker_hidden_color_layers + 1):
-            l_hidden_color = NINLayer(l_hidden_color, num_units=cell_size,
-                                      nonlinearity=NL[options.speaker_nonlinearity],
-                                      name=id_tag + 'hidden_color%d' % i)
-        return l_hidden_color, [l_color]
+        return l_color, [l_color]
 
 
 # neural has to import some of the classes above to keep pickle files readable.
 # Don't let the cycle keep this module from being imported.
-import neural
 import learners
