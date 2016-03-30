@@ -38,7 +38,7 @@ def apply_nan_suppression(updates, print_mode='all'):
 
     Examples
     --------
-    >>> param = theano.shared(np.array([0., 0.]).astype(theano.config.floatX),
+    >>> param = theano.shared(np.array([0., 0.], dtype=np.float32),
     ...                       name='param')
     >>> inc = T.vector('inc')
     >>> updates = OrderedDict([(param, param + inc)])
@@ -46,10 +46,10 @@ def apply_nan_suppression(updates, print_mode='all'):
     >>> func = theano.function([inc], safe_updates[param],
     ...                        updates=safe_updates)
     >>> func([1., 2.])
-    array([ 1.,  2.])
+    array([ 1.,  2.], dtype=float32)
     >>> func([2., float('nan')])
     Warning: non-finite update suppressed for param: __str__ = [  3.  nan]
-    array([ 1.,  2.])
+    array([ 1.,  2.], dtype=float32)
     """
     new_updates = OrderedDict([])
 

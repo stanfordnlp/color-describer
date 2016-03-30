@@ -10,7 +10,7 @@ These doctests test the functionality of the options to apply_nan_suppression.
 With `print_mode='shape'`, print only the shape of the update (not the entire
 array contents).
 
->>> param = theano.shared(np.array([0., 0.]).astype(theano.config.floatX),
+>>> param = theano.shared(np.array([0., 0.], dtype=np.float32),
 ...                       name='param')
 >>> inc = T.vector('inc')
 >>> updates = OrderedDict([(param, param + inc)])
@@ -18,10 +18,10 @@ array contents).
 >>> func = theano.function([inc], safe_updates[param],
 ...                        updates=safe_updates)
 >>> func([1., 2.])
-array([ 1.,  2.])
+array([ 1.,  2.], dtype=float32)
 >>> func([2., float('nan')])
 Warning: non-finite update suppressed for param: shape = (2,)
-array([ 1.,  2.])
+array([ 1.,  2.], dtype=float32)
 
 With `print_mode='none'`, don't print anything when NaNs are detected.
 
@@ -29,9 +29,9 @@ With `print_mode='none'`, don't print anything when NaNs are detected.
 >>> func = theano.function([inc], safe_updates[param],
 ...                        updates=safe_updates)
 >>> func([1., 2.])
-array([ 2.,  4.])
+array([ 2.,  4.], dtype=float32)
 >>> func([2., float('nan')])
-array([ 2.,  4.])
+array([ 2.,  4.], dtype=float32)
 '''
 
 import doctest
