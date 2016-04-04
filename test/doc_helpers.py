@@ -12,7 +12,7 @@ array contents).
 
 >>> param = theano.shared(np.array([0., 0.], dtype=np.float32),
 ...                       name='param')
->>> inc = T.vector('inc')
+>>> inc = T.fvector('inc')
 >>> updates = OrderedDict([(param, param + inc)])
 >>> safe_updates = apply_nan_suppression(updates, print_mode='shape')
 >>> func = theano.function([inc], safe_updates[param],
