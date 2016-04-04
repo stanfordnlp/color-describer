@@ -260,7 +260,10 @@ class SpeakerLearner(NeuralLearner):
             id=self.id
         )
         l_hidden_color = dimshuffle(l_color_repr, (0, 2, 1))
+        print('before loop, options.speaker_hidden_color_layers == %d' %
+              options.speaker_hidden_color_layers)
         for i in range(1, options.speaker_hidden_color_layers + 1):
+            print('NIN %d' % i)
             l_hidden_color = NINLayer(l_hidden_color, num_units=options.speaker_cell_size,
                                       nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
                                       name=id_tag + 'hidden_color%d' % i)
@@ -272,7 +275,7 @@ class SpeakerLearner(NeuralLearner):
         l_prev_embed = EmbeddingLayer(l_prev_out, input_size=len(self.seq_vec.tokens),
                                       output_size=options.speaker_cell_size,
                                       name=id_tag + 'prev_embed')
-        l_in = ConcatLayer([l_color_repr, l_prev_embed], axis=2, name=id_tag + 'color_prev')
+        l_in = ConcatLayer([l_hidden_color, l_prev_embed], axis=2, name=id_tag + 'color_prev')
         l_mask_in = InputLayer(shape=(None, self.seq_vec.max_len - 1),
                                input_var=mask_var, name=id_tag + 'mask_input')
         l_rec_drop = l_in
@@ -501,10 +504,10 @@ class AtomicSpeakerLearner(NeuralLearner):
             l_scores = l_color_repr  # BiasLayer(l_color_repr, name=id_tag + 'bias')
         else:
             if options.speaker_dropout > 0.0:
-                l_color_drop = DropoutLayer(l_color_repr, p=options.speaker_dropout,
+                l_color_drop = DropoutLayer(l_hidden_color, p=options.speaker_dropout,
                                             name=id_tag + 'color_drop')
             else:
-                l_color_drop = l_color_repr
+                l_color_drop = l_hidden_color
 
             l_hidden = DenseLayer(l_color_drop, num_units=options.speaker_cell_size,
                                   nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
