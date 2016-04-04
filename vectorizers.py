@@ -481,13 +481,13 @@ class RawVectorizer(ColorVectorizer):
                             scaled and shifted to lie in the range [-1, 1].
 
         >>> RawVectorizer().vectorize((255, 0, 0))
-        array([ 1., -1., -1.])
+        array([ 1., -1., -1.], dtype=float32)
         >>> RawVectorizer().vectorize((0, 100, 100), hsv=True)
-        array([ 1., -1., -1.])
+        array([ 1., -1., -1.], dtype=float32)
         >>> RawVectorizer(hsv=True).vectorize((0, 100, 100))
-        array([-1.,  1.,  1.])
+        array([-1.,  1.,  1.], dtype=float32)
         >>> RawVectorizer(hsv=True).vectorize((255, 0, 0), hsv=False)
-        array([-1.,  1.,  1.])
+        array([-1.,  1.,  1.], dtype=float32)
         '''
         if hsv is None:
             hsv = self.hsv
@@ -503,7 +503,7 @@ class RawVectorizer(ColorVectorizer):
             color_0_1 = tuple(d / (r - 1.0) for d, r in zip(color, ranges))
         color_internal = tuple(d * 2.0 - 1.0 for d in color_0_1)
 
-        return np.array(color_internal)
+        return np.array(color_internal, dtype=np.float32)
 
     def unvectorize(self, color, random='ignored', hsv=None):
         '''
@@ -593,16 +593,16 @@ class FourierVectorizer(ColorVectorizer):
         >>> normalize = lambda v: np.where(v.round(2) == 0.0, 0.0, v.round(2))
         >>> normalize(FourierVectorizer([2]).vectorize((255, 0, 0)))
         array([ 1.,  1.,  1.,  1., -1., -1., -1., -1.,  0.,  0.,  0.,  0.,  0.,
-                0.,  0.,  0.])
+                0.,  0.,  0.], dtype=float32)
         >>> normalize(FourierVectorizer([2]).vectorize((180, 100, 100), hsv=True))
         array([ 1., -1., -1.,  1.,  1., -1., -1.,  1.,  0.,  0.,  0.,  0.,  0.,
-                0.,  0.,  0.])
+                0.,  0.,  0.], dtype=float32)
         >>> normalize(FourierVectorizer([2], hsv=True).vectorize((0, 100, 100)))
         array([ 1., -1., -1.,  1.,  1., -1., -1.,  1.,  0.,  0.,  0.,  0.,  0.,
-                0.,  0.,  0.])
+                0.,  0.,  0.], dtype=float32)
         >>> normalize(FourierVectorizer([2], hsv=True).vectorize((0, 255, 255), hsv=False))
         array([ 1., -1., -1.,  1., -1.,  1.,  1., -1.,  0.,  0.,  0.,  0.,  0.,
-                0.,  0.,  0.])
+                0.,  0.,  0.], dtype=float32)
         '''
         if hsv is None:
             hsv = self.hsv
@@ -632,7 +632,7 @@ class FourierVectorizer(ColorVectorizer):
 
         repr_complex = np.exp(-2j * np.pi *
                               ((x * gx + y * gy + z * gz) % 1.0)).swapaxes(0, 1).flatten()
-        result = np.hstack([repr_complex.real, repr_complex.imag])
+        result = np.hstack([repr_complex.real, repr_complex.imag]).astype(np.float32)
         return result
 
     def unvectorize(self, color, random='ignored', hsv=None):
