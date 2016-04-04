@@ -6,4 +6,4 @@
 # Make sure you have setup.cfg copied over, or this won't by default run
 # coverage or doctest.
 
-nosetests --exclude-dir=itest --exclude-dir=third-party/stanza/stanza/test/slow_tests
+nosetests --exclude-dir=itest --exclude-dir=third-party/stanza/test/slow_tests
