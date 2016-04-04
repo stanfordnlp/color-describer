@@ -260,10 +260,7 @@ class SpeakerLearner(NeuralLearner):
             id=self.id
         )
         l_hidden_color = dimshuffle(l_color_repr, (0, 2, 1))
-        print('before loop, options.speaker_hidden_color_layers == %d' %
-              options.speaker_hidden_color_layers)
         for i in range(1, options.speaker_hidden_color_layers + 1):
-            print('NIN %d' % i)
             l_hidden_color = NINLayer(l_hidden_color, num_units=options.speaker_cell_size,
                                       nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
                                       name=id_tag + 'hidden_color%d' % i)
