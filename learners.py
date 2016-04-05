@@ -247,13 +247,13 @@ class LookupLearner(Learner):
                 inp = self.vectorize(inp)
             self.counters[inp][out] += 1
 
-    def predict_and_score(self, training_instances, random='ignored', verbosity=0):
+    def predict_and_score(self, eval_instances, random='ignored', verbosity=0):
         options = config.options()
         if options.verbosity + verbosity >= 2:
             print('Testing')
         predictions = []
         scores = []
-        for inst in training_instances:
+        for inst in eval_instances:
             inp, out = inst.input, inst.output
             if options.listener:
                 out = self.vectorize(out)
@@ -317,3 +317,11 @@ LEARNERS = {
     'Random': RandomListenerLearner,
     'Lookup': LookupLearner,
 }
+
+# Break cyclic dependency: ExhaustiveS1Learner needs list of learners to define
+# exhaustive_base_learner command line option, LEARNERS needs ExhaustiveS1Learner
+# to be defined to include it in the list.
+import ref_game
+LEARNERS.update({
+    'ExhaustiveS1': ref_game.ExhaustiveS1Learner,
+})
