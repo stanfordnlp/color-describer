@@ -373,6 +373,13 @@ class BucketsVectorizer(ColorVectorizer):
                                        name=id_tag + 'color_embed')
         return l_color_embed, [l_color]
 
+    def __setstate__(self, state):
+        # Recompute bucket sizes, patch over hsv attribute for pickle backwards
+        # compatibility
+        self.__dict__.update(state)
+        hsv = self.hsv if hasattr(self, 'hsv') else False
+        self.__init__(self.resolution, hsv=hsv)
+
 
 class MSVectorizer(ColorVectorizer):
     '''
