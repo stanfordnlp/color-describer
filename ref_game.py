@@ -45,6 +45,7 @@ class ExhaustiveS1Learner(Learner):
             print('Testing')
         progress.start_task('Eval batch', num_batches)
         for batch_num, batch in enumerate(batches):
+            progress.progress(batch_num)
             batch = list(batch)
             output_grid = [instance.Instance(utt, inst.input)
                            for inst in batch for utt in sym_vec.tokens]
@@ -60,7 +61,7 @@ class ExhaustiveS1Learner(Learner):
             pred_indices = np.argmax(log_probs, axis=1)
             predictions.extend(sym_vec.unvectorize_all(pred_indices))
             scores.extend(log_probs[np.arange(len(batch)), true_indices].tolist())
-        print('predictions: %s' % (predictions,))
+        progress.end_task()
 
         return predictions, scores
 
