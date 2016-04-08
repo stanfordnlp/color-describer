@@ -47,16 +47,33 @@ class ExhaustiveS1Learner(Learner):
         for batch_num, batch in enumerate(batches):
             progress.progress(batch_num)
             batch = list(batch)
-            output_grid = [instance.Instance(utt, inst.input)
-                           for inst in batch for utt in sym_vec.tokens]
-            true_indices = sym_vec.vectorize_all([inst.input for inst in batch])
-            if len(true_indices.shape) == 2:
-                # Sequence vectorizer; we're only using single tokens for now.
-                true_indices = true_indices[:, 0]
+            context = len(batch[0].alt_inputs) if batch[0].alt_inputs is not None else 0
+            if context:
+                output_grid = [instance.Instance(utt, color)
+                               for inst in batch for color in inst.alt_inputs
+                               for utt in sym_vec.tokens]
+                assert len(output_grid) == context * len(batch) * len(all_utts), \
+                    'Context must be the same number of colors for all examples'
+                true_indices = np.array([inst.input for inst in batch])
+            else:
+                output_grid = [instance.Instance(utt, inst.input)
+                               for inst in batch for utt in sym_vec.tokens]
+                true_indices = sym_vec.vectorize_all([inst.input for inst in batch])
+                if len(true_indices.shape) == 2:
+                    # Sequence vectorizer; we're only using single tokens for now.
+                    true_indices = true_indices[:, 0]
             scores = self.listener.score(output_grid, verbosity=verbosity)
+            if context:
+                log_probs = np.array(scores).reshape((len(batch), context, len(all_utts)))
+                # Renormalize over only the context colors, and extract the score of
+                # the true color.
+                log_probs -= logsumexp(log_probs, axis=1)[:, np.newaxis, :]
+                log_probs = log_probs[np.arange(len(batch)), true_indices, :]
+            else:
+                log_probs = np.array(scores).reshape((len(batch), len(all_utts)))
+            assert log_probs.shape == (len(batch), len(all_utts))
             # Normalize across utterances. Note that the listener returns probability
             # densities over colors.
-            log_probs = np.array(scores).reshape((-1, len(all_utts)))
             log_probs -= logsumexp(log_probs, axis=1)[:, np.newaxis]
             pred_indices = np.argmax(log_probs, axis=1)
             predictions.extend(sym_vec.unvectorize_all(pred_indices))

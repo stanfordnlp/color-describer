@@ -1,3 +1,4 @@
+import colorsys
 from collections import namedtuple
 
 try:
@@ -8,11 +9,18 @@ except ImportError:
                      './dependencies?)\n')
     raise
 
+from stanza.unstable import config
 from stanza.unstable.instance import Instance
 from stanza.unstable.rng import get_rng
 
 
 rng = get_rng()
+
+parser = config.get_options_parser()
+parser.add_argument('--num_distractors', type=int, default=4,
+                    help='The number of random colors to include in addition to the true '
+                         'color in generating reference game instances. Ignored if not '
+                         'using one of the `ref_` data sources.')
 
 
 def load_colors(h, s, v):
@@ -97,6 +105,59 @@ def scalar_imp_test(listener=False):
     return pairs_to_insts(data, listener=listener)
 
 
+def reference_game_train(gen_func):
+    def generate_refgame_train(listener=False):
+        return reference_game(get_training_instances(), gen_func, listener=listener)
+    return generate_refgame_train
+
+
+def reference_game_test(gen_func):
+    def generate_refgame_test(listener=False):
+        return reference_game(get_training_instances(), gen_func, listener=listener)
+    return generate_refgame_test
+
+
+def reference_game(insts, gen_func, listener=False):
+    options = config.options()
+    result = []
+    for inst in insts:
+        color = inst.output if listener else inst.input
+        distractors = [gen_func(color) for _ in range(options.num_distractors)]
+        answer = rng.randint(0, len(distractors) + 1)
+        context = distractors[:answer] + [color] + distractors[answer:]
+        ref_inst = (Instance(inst.input, answer, alt_outputs=context)
+                    if listener else
+                    Instance(answer, inst.output, alt_inputs=context))
+        result.append(ref_inst)
+    return result
+
+
+def uniform(color):
+    r, g, b = rng.uniform(size=(3,))
+    h, s, v = colorsys.rgb_to_hsv(r, g, b)
+    return h * 360.0, s * 100.0, v * 100.0
+
+
+def linear_rgb(color):
+    coord = rng.randint(0, 3)
+    val = rng.uniform()
+    h, s, v = color
+    result = list(colorsys.hsv_to_rgb(h / 360.0, s / 100.0, v / 100.0))
+    result[coord] = val
+    h, s, v = colorsys.rgb_to_hsv(*result)
+    return h * 360.0, s * 100.0, v * 100.0
+
+
+def linear_hsv(color):
+    coord = rng.randint(0, 3)
+    val = rng.uniform()
+    h, s, v = color
+    result = [h / 360.0, s / 100.0, v / 100.0]
+    result[coord] = val
+    h, s, v = result
+    return h * 360.0, s * 100.0, v * 100.0
+
+
 DataSource = namedtuple('DataSource', ['train_data', 'test_data'])
 
 SOURCES = {
@@ -105,4 +166,7 @@ SOURCES = {
     '1word': DataSource(one_word, one_word),
     '0word': DataSource(empty_str, empty_str),
     'scalar': DataSource(scalar_imp_train, scalar_imp_test),
+    'ref_uni': DataSource(reference_game_train(uniform), reference_game_test(uniform)),
+    'ref_linrgb': DataSource(reference_game_train(linear_rgb), reference_game_test(linear_rgb)),
+    'ref_linhsv': DataSource(reference_game_train(linear_hsv), reference_game_test(linear_hsv)),
 }
