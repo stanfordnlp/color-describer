@@ -59,6 +59,11 @@ parser.add_argument('--grad_of_est', action='store_true',
                     help='If `True`, optimize using the gradient of the estimated loss; '
                          'otherwise, use the manually-derived estimate of the gradient of '
                          'the true loss.')
+parser.add_argument('--layer_by_layer', action='store_true',
+                    help='If `True`, train RSA agents layer-by-layer (only use the log-likelihood '
+                         'sub-gradients, equivalent to training each agent on data generated from '
+                         'the other agents); otherwise, use the gradient of the full RSA '
+                         'objective.')
 
 
 class AggregatePrior(object):
@@ -158,7 +163,8 @@ class RSAGraphModel(SimpleLasagneModel):
         if options.grad_of_est:
             est_grad, monitored_grads = self.get_grad_of_est(monitored, params)
         else:
-            est_grad, monitored_grads = self.get_est_grad(params)
+            est_grad, monitored_grads = self.get_est_grad(params,
+                                                          layer_by_layer=options.layer_by_layer)
         monitored.update(monitored_grads)
         synth_vars = [v
                       for agent in self.listeners + self.speakers
@@ -217,7 +223,7 @@ class RSAGraphModel(SimpleLasagneModel):
             monitored.update(all_sublosses)
         return monitored
 
-    def get_est_grad(self, params):
+    def get_est_grad(self, params, layer_by_layer=False):
         options = config.options()
 
         def mean_weighted_grad(weights, loss):
@@ -274,40 +280,43 @@ class RSAGraphModel(SimpleLasagneModel):
 
         # The "hard" mu and nu terms: regularize the agents with maximum entropy and
         # accommodating other agents' priors.
-        #   sum_k \mu_jk E_{G_L(\theta_j)}
-        #     [(1 + log G_L(c, m; \theta_j) - log H_S(c, m; \phi_k)) *
-        #      d/d\theta_j log L(c | m; \theta_j)]
-        if options.verbosity >= 4:
-            print(id_tag + 'grad: mu regularizer')
-        all_subgrads.extend([
-            ('grad_mu_reg/%s_%s' % (listener.id, speaker.id),
-             mean_weighted_grad(
-                 mu *
-                 (1 + listener.log_joint_emp(listener.model.sample_inputs_self,
-                                             listener.model.sample_target_self) -
-                  speaker.log_joint_smooth(speaker.model.sample_inputs_others[j],
-                                           speaker.model.sample_target_others[j])),
-                 listener.loss_out(listener.model.sample_inputs_self,
-                                   listener.model.sample_target_self)))
-            for mu, (listener, j, speaker, k) in zip(options.rsa_mu, self.dyads())
-        ])
-        #   sum_j \nu_jk E_{G_S(\phi_k)}
-        #     [(1 + log G_S(c, m; \phi_k) - log H_L(c, m; \theta_j)) *
-        #      d/d\phi_k log S(m | c; \phi_k)]
-        if options.verbosity >= 4:
-            print(id_tag + 'grad: nu regularizer')
-        all_subgrads.extend([
-            ('grad_nu_reg/%s_%s' % (listener.id, speaker.id),
-             mean_weighted_grad(
-                 nu *
-                 (1 + speaker.log_joint_emp(speaker.model.sample_inputs_self,
-                                            speaker.model.sample_target_self) -
-                  listener.log_joint_smooth(listener.model.sample_inputs_others[k],
-                                            listener.model.sample_target_others[k])),
-                 speaker.loss_out(speaker.model.sample_inputs_self,
-                                  speaker.model.sample_target_self)))
-            for nu, (listener, j, speaker, k) in zip(options.rsa_nu, self.dyads())
-        ])
+        #
+        # Zero out these subgradients if we're doing layer-by-layer training.
+        if not layer_by_layer:
+            #   sum_k \mu_jk E_{G_L(\theta_j)}
+            #     [(1 + log G_L(c, m; \theta_j) - log H_S(c, m; \phi_k)) *
+            #      d/d\theta_j log L(c | m; \theta_j)]
+            if options.verbosity >= 4:
+                print(id_tag + 'grad: mu regularizer')
+            all_subgrads.extend([
+                ('grad_mu_reg/%s_%s' % (listener.id, speaker.id),
+                 mean_weighted_grad(
+                     mu *
+                     (1 + listener.log_joint_emp(listener.model.sample_inputs_self,
+                                                 listener.model.sample_target_self) -
+                      speaker.log_joint_smooth(speaker.model.sample_inputs_others[j],
+                                               speaker.model.sample_target_others[j])),
+                     listener.loss_out(listener.model.sample_inputs_self,
+                                       listener.model.sample_target_self)))
+                for mu, (listener, j, speaker, k) in zip(options.rsa_mu, self.dyads())
+            ])
+            #   sum_j \nu_jk E_{G_S(\phi_k)}
+            #     [(1 + log G_S(c, m; \phi_k) - log H_L(c, m; \theta_j)) *
+            #      d/d\phi_k log S(m | c; \phi_k)]
+            if options.verbosity >= 4:
+                print(id_tag + 'grad: nu regularizer')
+            all_subgrads.extend([
+                ('grad_nu_reg/%s_%s' % (listener.id, speaker.id),
+                 mean_weighted_grad(
+                     nu *
+                     (1 + speaker.log_joint_emp(speaker.model.sample_inputs_self,
+                                                speaker.model.sample_target_self) -
+                      listener.log_joint_smooth(listener.model.sample_inputs_others[k],
+                                                listener.model.sample_target_others[k])),
+                     speaker.loss_out(speaker.model.sample_inputs_self,
+                                      speaker.model.sample_target_self)))
+                for nu, (listener, j, speaker, k) in zip(options.rsa_nu, self.dyads())
+            ])
 
         est_grad = t_sum([grads for tag, grads in all_subgrads], nested=True)
 
