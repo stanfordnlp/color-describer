@@ -81,18 +81,29 @@ rng = get_rng()
 
 class UniformPrior(object):
     '''A uniform color prior in RGB space.'''
-    def __init__(self):
+    def __init__(self, recurrent=False):
         self.sampler = BucketsVectorizer([1], hsv=False)
+        self.recurrent = recurrent
 
     def fit(self, xs, ys):
         pass
 
     def apply(self, input_vars):
         c = input_vars[0]
-        if c.ndim == 1:
-            ones = T.ones_like(c)
+        if self.recurrent:
+            if c.ndim == 2:
+                ones = T.ones_like(c[:, 0])
+            elif c.ndim == 3:
+                ones = T.ones_like(c[:, 0, 0])
+            else:
+                assert False, 'need handling for higher rank color vectors (recurrent): %d' % c.ndim
         else:
-            ones = T.ones_like(c[:, 0])
+            if c.ndim == 1:
+                ones = T.ones_like(c)
+            elif c.ndim == 2:
+                ones = T.ones_like(c[:, 0])
+            else:
+                assert False, 'need handling for higher rank color vectors (atomic): %d' % c.ndim
         return -3.0 * np.log(256.0) * ones
 
     def sample(self, num_samples):
@@ -254,8 +265,8 @@ class SpeakerLearner(NeuralLearner):
                                  optimizer=OPTIMIZERS[options.speaker_optimizer],
                                  learning_rate=options.speaker_learning_rate)
 
-        self.prior_emp = UniformPrior()
-        self.prior_smooth = UniformPrior()
+        self.prior_emp = UniformPrior(recurrent=True)
+        self.prior_smooth = UniformPrior(recurrent=True)
 
     def _get_l_out(self, input_vars):
         options = config.options()
