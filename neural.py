@@ -353,6 +353,13 @@ class NeuralLearner(Learner):
             inst.output = out
         return input_insts
 
+    def sample_joint_smooth(self, num_samples=1):
+        input_insts = self.sample_prior_smooth(num_samples)
+        outputs = self.sample(input_insts)
+        for inst, out in zip(input_insts, outputs):
+            inst.output = out
+        return input_insts
+
     def log_joint_smooth(self, input_vars, target_var):
         return (self.log_prior_smooth(input_vars) -
                 self.loss_out(input_vars, target_var))

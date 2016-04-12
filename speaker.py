@@ -10,7 +10,7 @@ from lasagne.nonlinearities import softmax
 from lasagne.objectives import categorical_crossentropy
 from lasagne.updates import rmsprop
 
-from stanza.unstable import config, progress, iterators
+from stanza.unstable import config, progress, iterators, instance
 from stanza.unstable.rng import get_rng
 from neural import NeuralLearner, SimpleLasagneModel
 from neural import NONLINEARITIES, OPTIMIZERS, CELLS, sample
@@ -80,6 +80,10 @@ rng = get_rng()
 
 
 class UniformPrior(object):
+    '''A uniform color prior in RGB space.'''
+    def __init__(self):
+        self.sampler = BucketsVectorizer([1], hsv=False)
+
     def fit(self, xs, ys):
         pass
 
@@ -90,6 +94,14 @@ class UniformPrior(object):
         else:
             ones = T.ones_like(c[:, 0])
         return -3.0 * np.log(256.0) * ones
+
+    def sample(self, num_samples):
+        '''
+        :return: a list of `num_samples` colors sampled uniformly in RGB space,
+                 but expressed as HSV triples.
+        '''
+        return self.sampler.unvectorize_all(np.zeros(num_samples, dtype=np.int32),
+                                            random=True, hsv=True)
 
 
 class SpeakerLearner(NeuralLearner):
@@ -323,6 +335,10 @@ class SpeakerLearner(NeuralLearner):
     def masked_loss(self, input_vars):
         return masked_seq_crossentropy(input_vars[-1])
 
+    def sample_prior_smooth(self, num_samples):
+        return [instance.Instance(input=c) for c in
+                self.prior_smooth.sample(num_samples)]
+
 
 def check_options(options):
     if options.speaker_grad_clipping:
@@ -521,6 +537,10 @@ class AtomicSpeakerLearner(NeuralLearner):
                                   name=id_tag + 'softmax')
 
         return l_out, color_inputs
+
+    def sample_prior_smooth(self, num_samples):
+        return [instance.Instance(input=c) for c in
+                self.prior_smooth.sample(num_samples)]
 
 
 SPEAKERS = {

@@ -64,6 +64,12 @@ parser.add_argument('--layer_by_layer', action='store_true',
                          'sub-gradients, equivalent to training each agent on data generated from '
                          'the other agents); otherwise, use the gradient of the full RSA '
                          'objective.')
+parser.add_argument('--listener_sample_smoothed', action='store_true',
+                    help='If `True`, take samples from the smoothed utterance prior; otherwise, '
+                         'sample from the empirical utterance prior.')
+parser.add_argument('--speaker_sample_smoothed', action='store_true',
+                    help='If `True`, take samples from the smoothed world prior; otherwise, '
+                         'sample from the empirical world prior.')
 
 
 class AggregatePrior(object):
@@ -380,9 +386,13 @@ class RSAGraphModel(SimpleLasagneModel):
                 if options.verbosity >= 8:
                     print('%s: %s -> %s' % (agent.id, input_types, target_types))
 
-            listener_samples = [listener.sample_joint_emp(options.listener_samples)
+            listener_samples = [listener.sample_joint_smooth(options.listener_samples)
+                                if options.listener_sample_smoothed else
+                                listener.sample_joint_emp(options.listener_samples)
                                 for listener in self.listeners]
-            speaker_samples = [speaker.sample_joint_emp(options.speaker_samples)
+            speaker_samples = [speaker.sample_joint_smooth(options.speaker_samples)
+                               if options.speaker_sample_smoothed else
+                               speaker.sample_joint_emp(options.listener_samples)
                                for speaker in self.speakers]
 
             for listener, samples in zip(self.listeners, listener_samples):

@@ -10,10 +10,12 @@ from lasagne.objectives import categorical_crossentropy
 from lasagne.nonlinearities import softmax
 from lasagne.updates import rmsprop
 
-from stanza.unstable import config, instance, progress, iterators
+from stanza.unstable import config, instance, progress, iterators, rng
 from neural import NeuralLearner, SimpleLasagneModel
 from neural import NONLINEARITIES, OPTIMIZERS, CELLS, sample
 from vectorizers import SequenceVectorizer, BucketsVectorizer, SymbolVectorizer
+
+random = rng.get_rng()
 
 parser = config.get_options_parser()
 parser.add_argument('--listener_cell_size', type=int, default=20,
@@ -80,6 +82,10 @@ class UnigramPrior(object):
         else:
             return token_probs.sum(axis=1)
 
+    def sample(self, num_samples=1):
+        return np.array([sample(self.counts.get_value() * 1.0 / self.total.get_value())
+                         for _ in range(num_samples)], dtype=np.int32)
+
 
 class AtomicUniformPrior(object):
     def __init__(self, vocab_size):
@@ -95,6 +101,9 @@ class AtomicUniformPrior(object):
         else:
             ones = T.ones_like(c[:, 0])
         return -np.log(self.vocab_size) * ones
+
+    def sample(self, num_samples=1):
+        return random.randint(0, self.vocab_size, size=(num_samples,))
 
 
 PRIORS = {
@@ -272,6 +281,10 @@ class ListenerLearner(NeuralLearner):
 
         return l_out, [l_in]
 
+    def sample_prior_smooth(self, num_samples):
+        return [instance.Instance(input=c) for c in
+                self.seq_vec.unvectorize_all(self.prior_smooth.sample(num_samples))]
+
 
 class AtomicListenerLearner(ListenerLearner):
     '''
@@ -317,6 +330,8 @@ class AtomicListenerLearner(ListenerLearner):
         return [x], [y]
 
     def _build_model(self, model_class=SimpleLasagneModel):
+        options = config.options()
+
         id_tag = (self.id + '/') if self.id else ''
         input_var = T.ivector(id_tag + 'inputs')
         target_var = T.ivector(id_tag + 'targets')
@@ -327,8 +342,9 @@ class AtomicListenerLearner(ListenerLearner):
         self.model = model_class([input_var], [target_var], self.l_out,
                                  loss=self.loss, optimizer=rmsprop, id=self.id)
 
-        self.prior_emp = UnigramPrior(vocab_size=len(self.seq_vec.tokens))
-        self.prior_smooth = UnigramPrior(vocab_size=len(self.seq_vec.tokens))  # TODO: smoothing
+        prior_class = PRIORS[options.listener_prior]
+        self.prior_emp = prior_class(vocab_size=len(self.seq_vec.tokens))
+        self.prior_smooth = prior_class(vocab_size=len(self.seq_vec.tokens))  # TODO: smoothing
 
     def _get_l_out(self, input_vars):
         options = config.options()
@@ -360,6 +376,10 @@ class AtomicListenerLearner(ListenerLearner):
         l_out = NonlinearityLayer(l_scores, nonlinearity=softmax, name=id_tag + 'out')
 
         return l_out, [l_in]
+
+    def sample_prior_smooth(self, num_samples):
+        return [instance.Instance(input=c) for c in
+                self.seq_vec.unvectorize_all(self.prior_smooth.sample(num_samples))]
 
 
 def check_options(options):
