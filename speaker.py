@@ -38,7 +38,7 @@ parser.add_argument('--speaker_dropout', type=float, default=0.2,
 parser.add_argument('--speaker_color_resolution', type=int, nargs='+', default=[4],
                     help='The number of buckets along each dimension of color space '
                          'for the input of the speaker model.')
-parser.add_argument('--speaker_no_mask', action='store_true',
+parser.add_argument('--speaker_no_mask', type=config.boolean, default=False,
                     help='If `True`, disable masking of sequence inputs in training.')
 parser.add_argument('--speaker_hidden_color_layers', type=int, default=0,
                     help='The number of dense layers after the color representation.')
@@ -47,7 +47,7 @@ parser.add_argument('--speaker_recurrent_layers', type=int, default=2,
 parser.add_argument('--speaker_hidden_out_layers', type=int, default=0,
                     help='The number of dense layers to pass activations through '
                          'before the output.')
-parser.add_argument('--speaker_hsv', action='store_true',
+parser.add_argument('--speaker_hsv', type=config.boolean, default=False,
                     help='If `True`, input color buckets are in HSV space; otherwise, '
                          'color buckets will be in RGB. Input instances should be in HSV '
                          'regardless; this sets the internal representation for training '

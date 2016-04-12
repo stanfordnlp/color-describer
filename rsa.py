@@ -49,25 +49,25 @@ parser.add_argument('--listener_samples', type=int, default=128,
 parser.add_argument('--speaker_samples', type=int, default=128,
                     help='Number of samples to draw from the speaker per minibatch.')
 
-parser.add_argument('--monitor_sublosses', action='store_true',
+parser.add_argument('--monitor_sublosses', type=config.boolean, default=False,
                     help='If `True`, return sub-losses for monitoring and write them to the '
                          'TensorBoard events file. This will likely increase compilation time.')
-parser.add_argument('--monitor_subgrads', action='store_true',
+parser.add_argument('--monitor_subgrads', type=config.boolean, default=False,
                     help='If `True`, return sub-gradients for monitoring and write them to the '
                          'TensorBoard events file. This will likely increase compilation time.')
-parser.add_argument('--grad_of_est', action='store_true',
+parser.add_argument('--grad_of_est', type=config.boolean, default=False,
                     help='If `True`, optimize using the gradient of the estimated loss; '
                          'otherwise, use the manually-derived estimate of the gradient of '
                          'the true loss.')
-parser.add_argument('--layer_by_layer', action='store_true',
+parser.add_argument('--layer_by_layer', type=config.boolean, default=False,
                     help='If `True`, train RSA agents layer-by-layer (only use the log-likelihood '
                          'sub-gradients, equivalent to training each agent on data generated from '
                          'the other agents); otherwise, use the gradient of the full RSA '
                          'objective.')
-parser.add_argument('--listener_sample_smoothed', action='store_true',
+parser.add_argument('--listener_sample_smoothed', type=config.boolean, default=False,
                     help='If `True`, take samples from the smoothed utterance prior; otherwise, '
                          'sample from the empirical utterance prior.')
-parser.add_argument('--speaker_sample_smoothed', action='store_true',
+parser.add_argument('--speaker_sample_smoothed', type=config.boolean, default=False,
                     help='If `True`, take samples from the smoothed world prior; otherwise, '
                          'sample from the empirical world prior.')
 

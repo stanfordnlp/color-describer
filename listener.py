@@ -37,7 +37,7 @@ parser.add_argument('--listener_dropout', type=float, default=0.2,
 parser.add_argument('--listener_color_resolution', type=int, nargs='+', default=[4],
                     help='The number of buckets along each dimension of color space '
                          'for the output of the listener model.')
-parser.add_argument('--listener_hsv', action='store_true',
+parser.add_argument('--listener_hsv', type=config.boolean, default=False,
                     help='If True, output color buckets are in HSV space; otherwise, '
                          'color buckets will be in RGB. Final output instances will be in HSV '
                          'regardless; this sets the internal representation for training '

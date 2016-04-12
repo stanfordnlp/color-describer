@@ -28,7 +28,7 @@ parser.add_argument('--train_epochs', type=int, default=100,
                     help='Number of epochs per iteration')
 parser.add_argument('--batch_size', type=int, default=128,
                     help='Number of examples per minibatch for training and evaluation')
-parser.add_argument('--detect_nans', action='store_true',
+parser.add_argument('--detect_nans', type=config.boolean, default=False,
                     help='If True, throw an error if a non-finite value is detected.')
 parser.add_argument('--verbosity', type=int, default=4,
                     help='Amount of diagnostic output to produce. 0-1: only progress updates; '
@@ -37,15 +37,15 @@ parser.add_argument('--verbosity', type=int, default=4,
                          '6-7: plus parameter names for each function compilation; '
                          '8: plus shapes and types for each compiled function call; '
                          '9-10: plus vectorization of all datasets')
-parser.add_argument('--no_graphviz', action='store_true',
+parser.add_argument('--no_graphviz', type=config.boolean, default=False,
                     help='If `True`, do not use theano.printing.pydotprint to visualize '
                          'function graphs.')
-parser.add_argument('--no_nan_suppression', action='store_true',
+parser.add_argument('--no_nan_suppression', type=config.boolean, default=False,
                     help='If `True`, do not try to suppress NaNs in training.')
-parser.add_argument('--monitor_grads', action='store_true',
+parser.add_argument('--monitor_grads', type=config.boolean, default=False,
                     help='If `True`, return gradients for monitoring and write them to the '
                          'TensorBoard events file.')
-parser.add_argument('--monitor_params', action='store_true',
+parser.add_argument('--monitor_params', type=config.boolean, default=False,
                     help='If `True`, write parameter value histograms out to the '
                          'TensorBoard events file.')
 parser.add_argument('--true_grad_clipping', type=float, default=5.0,

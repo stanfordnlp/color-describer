@@ -36,13 +36,13 @@ parser.add_argument('--test_size', type=int, default=None,
                          'If None, use the whole dev/test set.')
 parser.add_argument('--data_source', default='dev', choices=color_instances.SOURCES.keys(),
                     help='The type of data to use.')
-parser.add_argument('--output_train_data', action='store_true',
+parser.add_argument('--output_train_data', type=config.boolean, default=False,
                     help='If True, write out the training dataset (after cutting down to '
                          '`train_size`) as a JSON-lines file in the output directory.')
-parser.add_argument('--output_test_data', action='store_true',
+parser.add_argument('--output_test_data', type=config.boolean, default=False,
                     help='If True, write out the evaluation dataset (after cutting down to '
                          '`test_size`) as a JSON-lines file in the output directory.')
-parser.add_argument('--listener', action='store_true',
+parser.add_argument('--listener', type=config.boolean, default=False,
                     help='If True, evaluate on listener accuracy (description -> color). '
                          'Otherwise evaluate on speaker accuracy (color -> description).')
 parser.add_argument('--progress_tick', type=int, default=300,
