@@ -1,9 +1,11 @@
 import colorsys
 import glob
 import json
+import numpy as np
 import os
 import warnings
 from collections import namedtuple
+from numbers import Number
 
 from stanza.unstable import config, instance  # NOQA (for doctest)
 
@@ -48,23 +50,23 @@ def html_report(output, compare=None):
         <h3>dev</h3>
         <table>
             <tr><th>Metric</th><th>gmean</th></tr>
-            <tr><td>perplexity</td><td align="right">14.00</td></tr>
+            <tr><td>perplexity</td><td align="right">14.000</td></tr>
         </table>
         <h2>Error analysis</h2>
         <h3>Worst</h3>
         <table>
-            <tr><th>input</th><th>gold</th><th>prediction</th><th>score</th></tr>
-            <tr><td bgcolor="#ff0000">[0, 100, 100]</td><td bgcolor="#fff">'red'</td><td bgcolor="#fff">'bright red'</td><td>-2.639057329615259</td></tr>
+            <tr><th>input</th><th>gold</th><th>prediction</th><th>prob</th></tr>
+            <tr><td bgcolor="#ff0000">[0, 100, 100]</td><td bgcolor="#fff">'red'</td><td bgcolor="#fff">'bright red'</td><td>0.071</td></tr>
         </table>
         <h3>Best</h3>
         <table>
-            <tr><th>input</th><th>gold</th><th>prediction</th><th>score</th></tr>
-            <tr><td bgcolor="#ff0000">[0, 100, 100]</td><td bgcolor="#fff">'red'</td><td bgcolor="#fff">'bright red'</td><td>-2.639057329615259</td></tr>
+            <tr><th>input</th><th>gold</th><th>prediction</th><th>prob</th></tr>
+            <tr><td bgcolor="#ff0000">[0, 100, 100]</td><td bgcolor="#fff">'red'</td><td bgcolor="#fff">'bright red'</td><td>0.071</td></tr>
         </table>
         <h3>Head</h3>
         <table>
-            <tr><th>input</th><th>gold</th><th>prediction</th><th>score</th></tr>
-            <tr><td bgcolor="#ff0000">[0, 100, 100]</td><td bgcolor="#fff">'red'</td><td bgcolor="#fff">'bright red'</td><td>-2.639057329615259</td></tr>
+            <tr><th>input</th><th>gold</th><th>prediction</th><th>prob</th></tr>
+            <tr><td bgcolor="#ff0000">[0, 100, 100]</td><td bgcolor="#fff">'red'</td><td bgcolor="#fff">'bright red'</td><td>0.071</td></tr>
         </table>
     </body>
     </html>
@@ -166,57 +168,65 @@ def format_results(results, compare=None):
 def get_formatted_result(results, split, m, a):
     key = '.'.join((split, m, a) if a else (split, m))
     if key in results:
-        value = results[key]
-        if isinstance(value, int):
-            return '{:,d}'.format(value)
-        elif value > 1e8:
-            return '{:.5e}'.format(value)
-        else:
-            return '{:,.2f}'.format(value)
+        return format_number(results[key])
     else:
         return ''
+
+
+def format_number(value):
+    if not isinstance(value, Number):
+        return repr(value)
+    elif isinstance(value, int):
+        return '{:,d}'.format(value)
+    elif value > 1e8 or abs(value) < 1e-3:
+        return '{:.6e}'.format(value)
+    else:
+        return '{:,.3f}'.format(value)
 
 
 def format_error_analysis(output, compare=None):
     examples_table_template = '''    <h3>{cond}</h3>
     <table>
-        <tr><th>input</th><th>gold</th><th>prediction</th><th>score</th>{compare_header}</tr>
+        <tr><th>input</th><th>gold</th><th>prediction</th><th>prob</th>{compare_header}</tr>
 {examples}
     </table>'''
 
-    example_template = '        <tr>{input}{output}{prediction}{pscore}{comparison}{cscore}</tr>'
-    score_template = '<td>{!r}</td>'
+    example_template = '        <tr>{input}{output}{prediction}{pprob}{comparison}{cprob}</tr>'
+    score_template = '<td>{}</td>'
     collated = []
     for i, (inst, score, pred) in enumerate(zip(output.data, output.scores, output.predictions)):
         example = {}
         example['input'] = format_value(inst['input'])
         example['output'] = format_value(inst['output'])
         example['prediction'] = format_value(pred)
-        example['pscore'] = score_template.format(score)
-        example['pscore_val'] = score
+        pprob = np.exp(score) if isinstance(score, Number) else score
+        example['pprob'] = score_template.format(format_number(pprob))
+        example['pprob_val'] = pprob if isinstance(pprob, Number) else 0
         if compare:
             if compare.data[i]['input'] == inst['input']:
                 example['comparison'] = format_value(compare.predictions[i])
-                example['cscore'] = score_template.format(compare.scores[i])
-                example['cscore_val'] = compare.scores[i]
+                cscore = compare.scores[i]
+                cprob = np.exp(cscore) if isinstance(cscore, Number) else cscore
+                example['cprob'] = score_template.format(format_number(cprob))
+                example['cprob_val'] = cprob if isinstance(cprob, Number) else 0
             else:
                 warnings.warn("Comparison input doesn't match this input: %s != %s" %
                               (compare.data[i]['input'], inst['input']))
                 example['comparison'] = ''
-                example['cscore'] = ''
+                example['cprob'] = ''
         else:
             example['comparison'] = ''
-            example['cscore'] = ''
+            example['cprob'] = ''
         collated.append(example)
 
-    score_order = sorted(collated, key=lambda e: e['pscore_val'])
+    score_order = sorted(collated, key=lambda e: e['pprob_val'])
     tables = [
         ('Worst', score_order[:100]),
         ('Best', reversed(score_order[-100:])),
         ('Head', collated[:100]),
     ]
     if compare:
-        diff_order = sorted(collated, key=lambda e: e['pscore_val'] - e['cscore_val'])
+        diff_order = sorted(collated, key=lambda e: e['pprob_val'] - e['cprob_val'])
         tables.extend([
             ('Biggest decline', diff_order[:100]),
             ('Biggest improvement', reversed(diff_order[-100:])),
@@ -224,7 +234,7 @@ def format_error_analysis(output, compare=None):
 
     return '\n'.join(examples_table_template.format(
         cond=cond,
-        compare_header='<th>comparison</th><th>score</th>' if compare else '',
+        compare_header='<th>comparison</th><th>prob</th>' if compare else '',
         examples='\n'.join(
             example_template.format(**inst) for inst in examples
         )
