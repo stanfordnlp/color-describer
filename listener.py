@@ -14,6 +14,7 @@ from stanza.unstable import config, instance, progress, iterators, rng
 from neural import NeuralLearner, SimpleLasagneModel
 from neural import NONLINEARITIES, OPTIMIZERS, CELLS, sample
 from vectorizers import SequenceVectorizer, BucketsVectorizer, SymbolVectorizer
+from vectorizers import strip_invalid_tokens
 
 random = rng.get_rng()
 
@@ -56,43 +57,76 @@ parser.add_argument('--listener_grad_clipping', type=float, default=0.0,
 
 
 class UnigramPrior(object):
-    def __init__(self, vocab_size, mask_index=None):
-        self.vocab_size = vocab_size
-        self.counts = theano.shared(np.zeros((vocab_size,), dtype=np.int32))
+    '''
+    >>> p = UnigramPrior()
+    >>> p.train([instance.Instance('blue')])
+    >>> p.sample(3)  # doctest: +ELLIPSIS
+    ['...', '...', '...']
+    '''
+    def __init__(self):
+        self.vec = SequenceVectorizer()
+        self.vec.add_all([['</s>'], ['<MASK>']])
+        self.counts = theano.shared(np.zeros((self.vec.num_types,), dtype=np.int32))
         self.total = theano.shared(np.array(0, dtype=np.int32))
-        self.mask_index = mask_index
         self.log_probs = T.cast(self.counts, 'float32') / T.cast(self.total, 'float32')
+        self.mask_index = self.vec.vectorize(['<MASK>'])[0]
 
-    def fit(self, xs, ys):
-        (x,) = xs
-        counts = np.bincount(x.flatten(), minlength=self.vocab_size).astype(np.int32)
-        if self.mask_index is not None:
-            counts[self.mask_index] = 0
-        self.counts.set_value(self.counts.get_value() + counts)
-        self.total.set_value(self.total.get_value() + np.sum(counts))
+    def train(self, training_instances, listener_data=True):
+        get_utt = (lambda inst: inst.input) if listener_data else (lambda inst: inst.output)
+        tokenized = [get_utt(inst).split() for inst in training_instances]
+        self.vec.add_all(tokenized)
+        x = self.vec.vectorize_all(self.pad(tokenized, self.vec.max_len))
+        vocab_size = self.vec.num_types
+
+        counts = np.bincount(x.flatten(), minlength=vocab_size).astype(np.int32)
+        counts[self.mask_index] = 0
+        self.counts.set_value(counts)
+        self.total.set_value(np.sum(counts))
 
     def apply(self, input_vars):
         (x,) = input_vars
 
         token_probs = self.log_probs[x]
         if self.mask_index is not None:
-            token_probs = token_probs * T.cast((x == self.mask_index), 'float32')
+            token_probs = token_probs * T.cast(T.eq(x, self.mask_index), 'float32')
         if token_probs.ndim == 1:
             return token_probs
         else:
             return token_probs.sum(axis=1)
 
     def sample(self, num_samples=1):
-        return np.array([sample(self.counts.get_value() * 1.0 / self.total.get_value())
-                         for _ in range(num_samples)], dtype=np.int32)
+        indices = np.array([[sample(self.counts.get_value() * 1.0 / self.total.get_value())
+                             for _t in range(self.vec.max_len)]
+                            for _s in range(num_samples)], dtype=np.int32)
+        return [' '.join(strip_invalid_tokens(s)) for s in self.vec.unvectorize_all(indices)]
+
+    def pad(self, sequences, length):
+        '''
+        Adds </s> tokens followed by zero or more <MASK> tokens to bring the total
+        length of all sequences to `length + 1` (the addition of one is because all
+        sequences receive a </s>, but `length` should be the max length of the original
+        sequences).
+
+        >>> UnigramPrior().pad([['blue'], ['very', 'blue']], 2)
+        [['blue', '</s>', '<MASK>'], ['very', 'blue', '</s>']]
+        '''
+        return [seq + ['</s>'] + ['<MASK>'] * (length - len(seq))
+                for seq in sequences]
 
 
 class AtomicUniformPrior(object):
-    def __init__(self, vocab_size):
-        self.vocab_size = vocab_size
+    '''
+    >>> p = AtomicUniformPrior()
+    >>> p.train([instance.Instance('blue')])
+    >>> p.sample(3)  # doctest: +ELLIPSIS
+    ['...', '...', '...']
+    '''
+    def __init__(self):
+        self.vec = SymbolVectorizer()
 
-    def fit(self, xs, ys):
-        pass
+    def train(self, training_instances, listener_data=True):
+        self.vec.add_all([inst.input if listener_data else inst.output
+                          for inst in training_instances])
 
     def apply(self, input_vars):
         c = input_vars[0]
@@ -100,10 +134,11 @@ class AtomicUniformPrior(object):
             ones = T.ones_like(c)
         else:
             ones = T.ones_like(c[:, 0])
-        return -np.log(self.vocab_size) * ones
+        return -np.log(self.vec.num_types) * ones
 
     def sample(self, num_samples=1):
-        return random.randint(0, self.vocab_size, size=(num_samples,))
+        indices = random.randint(0, self.vec.num_types, size=(num_samples,))
+        return self.vec.unvectorize_all(indices)
 
 
 PRIORS = {
@@ -227,9 +262,14 @@ class ListenerLearner(NeuralLearner):
                                  learning_rate=options.listener_learning_rate,
                                  id=self.id)
 
+    def train_priors(self, training_instances, listener_data=False):
+        options = config.options()
         prior_class = PRIORS[options.listener_prior]
-        self.prior_emp = prior_class(vocab_size=len(self.seq_vec.tokens))
-        self.prior_smooth = prior_class(vocab_size=len(self.seq_vec.tokens))  # TODO: smoothing
+        self.prior_emp = prior_class()  # TODO: accurate values for empirical prior
+        self.prior_smooth = prior_class()
+
+        self.prior_emp.train(training_instances, listener_data=listener_data)
+        self.prior_smooth.train(training_instances, listener_data=listener_data)
 
     def _get_l_out(self, input_vars):
         options = config.options()
@@ -282,8 +322,7 @@ class ListenerLearner(NeuralLearner):
         return l_out, [l_in]
 
     def sample_prior_smooth(self, num_samples):
-        return [instance.Instance(input=c) for c in
-                self.seq_vec.unvectorize_all(self.prior_smooth.sample(num_samples))]
+        return [instance.Instance(input=c) for c in self.prior_smooth.sample(num_samples)]
 
 
 class AtomicListenerLearner(ListenerLearner):
@@ -330,8 +369,6 @@ class AtomicListenerLearner(ListenerLearner):
         return [x], [y]
 
     def _build_model(self, model_class=SimpleLasagneModel):
-        options = config.options()
-
         id_tag = (self.id + '/') if self.id else ''
         input_var = T.ivector(id_tag + 'inputs')
         target_var = T.ivector(id_tag + 'targets')
@@ -342,9 +379,14 @@ class AtomicListenerLearner(ListenerLearner):
         self.model = model_class([input_var], [target_var], self.l_out,
                                  loss=self.loss, optimizer=rmsprop, id=self.id)
 
+    def train_priors(self, training_instances, listener_data=False):
+        options = config.options()
         prior_class = PRIORS[options.listener_prior]
-        self.prior_emp = prior_class(vocab_size=len(self.seq_vec.tokens))
-        self.prior_smooth = prior_class(vocab_size=len(self.seq_vec.tokens))  # TODO: smoothing
+        self.prior_emp = prior_class()  # TODO: accurate values for the empirical prior
+        self.prior_smooth = prior_class()
+
+        self.prior_emp.train(training_instances, listener_data=listener_data)
+        self.prior_smooth.train(training_instances, listener_data=listener_data)
 
     def _get_l_out(self, input_vars):
         options = config.options()
@@ -378,8 +420,7 @@ class AtomicListenerLearner(ListenerLearner):
         return l_out, [l_in]
 
     def sample_prior_smooth(self, num_samples):
-        return [instance.Instance(input=c) for c in
-                self.seq_vec.unvectorize_all(self.prior_smooth.sample(num_samples))]
+        return [instance.Instance(input=c) for c in self.prior_smooth.sample(num_samples)]
 
 
 def check_options(options):

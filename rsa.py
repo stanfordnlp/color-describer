@@ -6,8 +6,8 @@ from stanza.unstable import config
 from neural import SimpleLasagneModel, NeuralLearner
 from vectorizers import SequenceVectorizer, BucketsVectorizer
 from neural import OPTIMIZERS
-from listener import LISTENERS
-from speaker import SPEAKERS
+from listener import LISTENERS, PRIORS
+from speaker import SPEAKERS, UniformPrior
 
 parser = config.get_options_parser()
 parser.add_argument('--rsa_listeners', type=int, default=1,
@@ -78,13 +78,11 @@ class AggregatePrior(object):
         self.speakers = speakers
         self.prior_name = prior_name
 
-    def fit(self, xs, ys):
-        input_idx = 0
-        for agent, target in zip(self.listeners + self.speakers, ys):
-            num_inputs = len(agent.model.input_vars)
-            inputs = xs[input_idx:input_idx + num_inputs]
-            getattr(agent, self.prior_name).fit(inputs, [target])
-            input_idx += num_inputs
+    def train(self, training_instances, listener=False):
+        for agent in self.listeners:
+            getattr(agent, self.prior_name).train(training_instances, listener=listener)
+        for agent in self.speakers:
+            getattr(agent, self.prior_name).train(training_instances, listener=listener)
 
     def apply(self, input_vars):
         assert False, ("AggregatePrior.apply shouldn't be called; "
@@ -496,6 +494,18 @@ class RSALearner(NeuralLearner):
         for agent in self.listeners + self.speakers:
             agent._build_model(RSASubModel)
         self.build_aggregate_model()
+
+    def train_priors(self, training_instances, listener_data=False):
+        options = config.options()
+        prior_class = PRIORS[options.listener_prior] if options.listener else UniformPrior
+        self.prior_emp = prior_class()
+        self.prior_smooth = prior_class()
+
+        self.prior_emp.train(training_instances, listener_data=listener_data)
+        self.prior_smooth.train(training_instances, listener_data=listener_data)
+
+        for agent in self.listeners + self.speakers:
+            agent.train_priors(training_instances, listener_data=listener_data)
 
     def build_aggregate_model(self):
         self.model = RSAGraphModel(self.listeners, self.speakers, self.eval_agent)

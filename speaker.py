@@ -14,7 +14,7 @@ from stanza.unstable import config, progress, iterators, instance
 from stanza.unstable.rng import get_rng
 from neural import NeuralLearner, SimpleLasagneModel
 from neural import NONLINEARITIES, OPTIMIZERS, CELLS, sample
-from vectorizers import SequenceVectorizer, SymbolVectorizer
+from vectorizers import SequenceVectorizer, SymbolVectorizer, strip_invalid_tokens
 from vectorizers import BucketsVectorizer, RawVectorizer, MSVectorizer, FourierVectorizer
 
 parser = config.get_options_parser()
@@ -85,7 +85,7 @@ class UniformPrior(object):
         self.sampler = BucketsVectorizer([1], hsv=False)
         self.recurrent = recurrent
 
-    def fit(self, xs, ys):
+    def train(self, training_instances, listener_data='ignored'):
         pass
 
     def apply(self, input_vars):
@@ -265,8 +265,12 @@ class SpeakerLearner(NeuralLearner):
                                  optimizer=OPTIMIZERS[options.speaker_optimizer],
                                  learning_rate=options.speaker_learning_rate)
 
+    def train_priors(self, training_instances, listener_data=False):
         self.prior_emp = UniformPrior(recurrent=True)
         self.prior_smooth = UniformPrior(recurrent=True)
+
+        self.prior_emp.train(training_instances, listener_data=listener_data)
+        self.prior_smooth.train(training_instances, listener_data=listener_data)
 
     def _get_l_out(self, input_vars):
         options = config.options()
@@ -365,14 +369,6 @@ def check_options(options):
     if options.speaker_nonlinearity == 'rectify':
         warnings.warn('Using ReLU as the output nonlinearity for a recurrent unit. This may '
                       'be a source of NaNs in the gradient.')
-
-
-def strip_invalid_tokens(sentence):
-    good_tokens = [t for t in sentence if t not in ('<s>', '<MASK>')]
-    if '</s>' in good_tokens:
-        end_pos = good_tokens.index('</s>')
-        good_tokens = good_tokens[:end_pos]
-    return good_tokens
 
 
 def crossentropy_categorical_1hot_nd(coding_dist, true_idx):
@@ -503,8 +499,12 @@ class AtomicSpeakerLearner(NeuralLearner):
         self.model = model_class(input_vars, [target_var], self.l_out,
                                  loss=self.loss, optimizer=rmsprop, id=self.id)
 
+    def train_priors(self, training_instances, listener_data=False):
         self.prior_emp = UniformPrior()
         self.prior_smooth = UniformPrior()
+
+        self.prior_emp.train(training_instances, listener_data=listener_data)
+        self.prior_smooth.train(training_instances, listener_data=listener_data)
 
     def _get_l_out(self, input_vars):
         options = config.options()

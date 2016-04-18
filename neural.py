@@ -291,15 +291,14 @@ class NeuralLearner(Learner):
     def train(self, training_instances, validation_instances=None, metrics=None):
         options = config.options()
 
-        self.dataset = training_instances
-        xs, ys = self._data_to_arrays(training_instances, init_vectorizer=True)
-        self._build_model()
-
         id_tag = (self.id + ': ') if self.id else ''
         if options.verbosity >= 2:
             print(id_tag + 'Training priors')
-        self.prior_emp.fit(xs, ys)
-        self.prior_smooth.fit(xs, ys)
+        self.train_priors(training_instances, listener_data=options.listener)
+
+        self.dataset = training_instances
+        xs, ys = self._data_to_arrays(training_instances, init_vectorizer=True)
+        self._build_model()
 
         if options.verbosity >= 2:
             print(id_tag + 'Training conditional model')

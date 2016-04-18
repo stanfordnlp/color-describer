@@ -80,6 +80,10 @@ class SequenceVectorizer(object):
         self.max_len = 0
         self.add(['<unk>'])
 
+    @property
+    def num_types(self):
+        return len(self.tokens)
+
     def add_all(self, sequences):
         for seq in sequences:
             self.add(seq)
@@ -661,6 +665,14 @@ class FourierVectorizer(ColorVectorizer):
         l_color = InputLayer(shape=shape, input_var=input_var,
                              name=id_tag + 'color_input')
         return l_color, [l_color]
+
+
+def strip_invalid_tokens(sentence):
+    good_tokens = [t for t in sentence if t not in ('<s>', '<MASK>')]
+    if '</s>' in good_tokens:
+        end_pos = good_tokens.index('</s>')
+        good_tokens = good_tokens[:end_pos]
+    return good_tokens
 
 
 # neural has to import some of the classes above to keep pickle files readable.

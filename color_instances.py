@@ -86,6 +86,11 @@ def one_word(listener=False):
     return pairs_to_insts(data, listener=listener)
 
 
+def two_word(listener=False):
+    data = [('shocking green', (167.74193548404, 96.3730569948, 75.6862745098))]
+    return pairs_to_insts(data, listener=listener)
+
+
 def scalar_imp_train(listener=False):
     data = [
         ('blue', (240., 100., 100.)),
@@ -163,6 +168,7 @@ DataSource = namedtuple('DataSource', ['train_data', 'test_data'])
 SOURCES = {
     'dev': DataSource(get_training_instances, get_dev_instances),
     'tune': DataSource(tune_train, tune_eval),
+    '2word': DataSource(two_word, two_word),
     '1word': DataSource(one_word, one_word),
     '0word': DataSource(empty_str, empty_str),
     'scalar': DataSource(scalar_imp_train, scalar_imp_test),
