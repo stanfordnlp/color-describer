@@ -1,5 +1,6 @@
 try:
     import wx
+    from wx import Dialog
     import wx.lib.colourselect as csel
 except ImportError, e:
     import warnings
@@ -61,7 +62,7 @@ class HumanListener(learner.Learner):
         return predictions, scores
 
 
-class ColorPickerDialog(wx.Dialog):
+class ColorPickerDialog(Dialog):
     def __init__(self, descriptions, start, total, *args, **kwargs):
         super(ColorPickerDialog, self).__init__(*args, **kwargs)
         sizer = wx.FlexGridSizer(cols=3)
