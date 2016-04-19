@@ -110,6 +110,32 @@ def scalar_imp_test(listener=False):
     return pairs_to_insts(data, listener=listener)
 
 
+def scalar_imp_level2_train(listener=False):
+    data = [
+        ('blue', (240., 100., 100.)),
+        ('blue', (170., 100., 70.)),
+        ('green', (170., 100., 70.)),
+        ('green', (80., 100., 100.)),
+        ('yellow', (80., 100., 100.)),
+    ]
+    return pairs_to_insts(data, listener=listener)
+
+
+def scalar_imp_level2_test(listener=False):
+    data = [
+        ('blue', (240., 100., 100.)),
+        ('blue', (170., 100., 70.)),
+        ('blue', (80., 100., 100.)),
+        ('green', (240., 100., 100.)),
+        ('green', (170., 100., 70.)),
+        ('green', (80., 100., 100.)),
+        ('yellow', (240., 100., 100.)),
+        ('yellow', (170., 100., 70.)),
+        ('yellow', (80., 100., 100.)),
+    ]
+    return pairs_to_insts(data, listener=listener)
+
+
 def reference_game_train(gen_func):
     def generate_refgame_train(listener=False):
         return reference_game(get_training_instances(), gen_func, listener=listener)
@@ -172,6 +198,7 @@ SOURCES = {
     '1word': DataSource(one_word, one_word),
     '0word': DataSource(empty_str, empty_str),
     'scalar': DataSource(scalar_imp_train, scalar_imp_test),
+    'scalar_lv2': DataSource(scalar_imp_level2_train, scalar_imp_level2_test),
     'ref_uni': DataSource(reference_game_train(uniform), reference_game_test(uniform)),
     'ref_linrgb': DataSource(reference_game_train(linear_rgb), reference_game_test(linear_rgb)),
     'ref_linhsv': DataSource(reference_game_train(linear_hsv), reference_game_test(linear_hsv)),

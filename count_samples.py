@@ -11,6 +11,7 @@ def report_samples(infile):
         print('Agent: %s' % agent)
         print('Types')
         agent_types = sorted(set(c for epoch in counts[agent] for c in epoch))
+        agent_types = [t for t in agent_types if '<unk>' not in t and '?' not in t]
         print('Counters')
         counters = [Counter(epoch) for epoch in counts[agent]]
         print('Counts')
@@ -50,9 +51,9 @@ def get_sample_counts(infile):
 def parse_sample(line):
     '''
     >>> parse_sample("'teal' -> (180, 100, 100)")
-    "'teal' -> +G"
+    "'teal' -> C"
     >>> parse_sample("(240, 100, 100) -> 'blue'")
-    "-G -> 'blue'"
+    "B -> 'blue'"
     '''
     inp, out = line.split(' -> ')
     return '%s -> %s' % (normalize_color(inp), normalize_color(out))
@@ -63,17 +64,27 @@ def normalize_color(fragment):
     >>> normalize_color("'blue'")
     "'blue'"
     >>> normalize_color("(0, 100, 100)")
-    '-G'
+    'R'
     >>> normalize_color("(120, 100, 100)")
-    '+G'
+    'G'
     >>> normalize_color("(180, 100, 100)")
-    '+G'
+    'C'
     '''
     value = eval(fragment)
     if isinstance(value, tuple):
         hsv_0_1 = (value[0] / 360.0, value[1] / 100.0, value[2] / 100.0)
         r, g, b = colorsys.hsv_to_rgb(*hsv_0_1)
-        return '+G' if g > 0.5 else '-G'
+        components = 'R' * (r > 0.5) + 'G' * (g > 0.5) + 'B' * (b > 0.5)
+        return {
+            '': '?',
+            'R': '?',
+            'G': '?',
+            'B': 'B',
+            'RG': 'Y',
+            'RB': '?',
+            'GB': 'C',
+            'RGB': '?',
+        }[components]
     else:
         return fragment
 
