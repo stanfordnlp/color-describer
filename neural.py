@@ -379,8 +379,12 @@ class NeuralLearner(Learner):
         if not hasattr(self, 'model'):
             raise RuntimeError("trying to pickle a model that hasn't been built yet")
         params = self.params()
-        # TODO: remove references to the vectorizers from this superclass
-        return self.seq_vec, self.color_vec, [p.get_value() for p in params], self.id
+        # TODO: remove references to the vectorizers and priors from this superclass
+        state = (self.seq_vec, self.color_vec, [p.get_value() for p in params], self.id)
+        if hasattr(self, 'prior_emp') and hasattr(self, 'prior_smooth'):
+            return state + (self.prior_emp, self.prior_smooth)
+        else:
+            return state
 
     def __setstate__(self, state):
         self.unpickle(state)
@@ -390,8 +394,14 @@ class NeuralLearner(Learner):
         if len(state) == 3:
             self.seq_vec, self.color_vec, params_state = state
             self.id = None
-        else:
+            self.train_priors([])
+        elif len(state) == 4:
             self.seq_vec, self.color_vec, params_state, self.id = state
+            self.train_priors([])
+        else:
+            (self.seq_vec, self.color_vec,
+             params_state, self.id,
+             self.prior_emp, self.prior_smooth) = state
         self._build_model(model_class)
         params = self.params()
         for p, value in zip(params, params_state):
