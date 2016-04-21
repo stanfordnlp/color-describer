@@ -11,13 +11,22 @@ Documentation Quicknav
    :maxdepth: 4
 
    Text <stanza.text>
+   CoreNLP Client <stanza.corenlp>
    Machine learning utilities <stanza.ml>
    Monitoring utilities <stanza.monitoring>
    Misc <stanza.util>
 
 
-.. include:: ../README.rst
+Examples
+========
 
+.. toctree::
+   :maxdepth: 2
+
+   Examples <examples>
+
+
+.. include:: ../README.rst
 
 
 Indices and tables
