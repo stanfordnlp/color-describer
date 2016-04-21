@@ -324,4 +324,5 @@ LEARNERS = {
 import ref_game
 LEARNERS.update({
     'ExhaustiveS1': ref_game.ExhaustiveS1Learner,
+    'DirectRefGame': ref_game.DirectRefGameLearner,
 })
