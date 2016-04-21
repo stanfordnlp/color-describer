@@ -1,5 +1,7 @@
-from stanza.unstable import pick_gpu, config
+from stanza.unstable import config
+config.redirect_output()
 
+from stanza.unstable import pick_gpu
 parser = config.get_options_parser()
 parser.add_argument('--device', default=None,
                     help='The device to use in Theano ("cpu" or "gpu[0-n]"). If None, '
