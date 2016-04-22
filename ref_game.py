@@ -1,8 +1,8 @@
 import numpy as np
 from scipy.misc import logsumexp
 
-from stanza.unstable import config, instance, progress, iterators
-from stanza.unstable.learner import Learner
+from stanza.research import config, instance, progress, iterators
+from stanza.research.learner import Learner
 
 import learners
 import vectorizers

@@ -1,8 +1,8 @@
 from collections import defaultdict, Counter
 import numpy as np
 
-from stanza.unstable.learner import Learner
-from stanza.unstable import progress, config
+from stanza.research.learner import Learner
+from stanza.research import progress, config
 from lux import LuxLearner
 from listener import ListenerLearner, AtomicListenerLearner
 from speaker import SpeakerLearner, AtomicSpeakerLearner
@@ -20,7 +20,7 @@ def new(key):
 
 class Histogram(object):
     '''
-    >>> from stanza.unstable.instance import Instance as I
+    >>> from stanza.research.instance import Instance as I
     >>> data = [I((0.0, 100.0, 49.0), 'red'),
     ...         I((0.0, 100.0, 45.0), 'dark red'),
     ...         I((240.0, 100.0, 49.0), 'blue')]

@@ -6,7 +6,7 @@ from collections import Sequence
 from lasagne.layers import InputLayer, EmbeddingLayer, reshape
 from matplotlib.colors import hsv_to_rgb
 
-from stanza.unstable.rng import get_rng
+from stanza.research.rng import get_rng
 
 rng = get_rng()
 

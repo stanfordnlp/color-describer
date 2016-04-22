@@ -7,7 +7,7 @@ import warnings
 from collections import namedtuple
 from numbers import Number
 
-from stanza.unstable import config, instance  # NOQA (for doctest)
+from stanza.research import config, instance  # NOQA (for doctest)
 
 
 parser = config.get_options_parser()

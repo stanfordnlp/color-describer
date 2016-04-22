@@ -13,9 +13,9 @@ from theano.printing import pydotprint
 from helpers import apply_nan_suppression
 from vectorizers import BucketsVectorizer, RawVectorizer  # NOQA: pickle backwards compatibility
 from vectorizers import SymbolVectorizer, SequenceVectorizer  # NOQA: pickle backwards compatibility
-from stanza.unstable import config, progress, summary
-from stanza.unstable.learner import Learner
-from stanza.unstable.rng import get_rng
+from stanza.research import config, progress, summary
+from stanza.research.learner import Learner
+from stanza.research.rng import get_rng
 
 
 ColorVectorizer = BucketsVectorizer  # pickle backwards compatibility

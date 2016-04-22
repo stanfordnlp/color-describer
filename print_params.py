@@ -1,7 +1,7 @@
 import cPickle as pickle
 
 import run_experiment
-from stanza.unstable import config
+from stanza.research import config
 
 
 def print_params(model):

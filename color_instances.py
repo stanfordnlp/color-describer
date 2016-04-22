@@ -9,9 +9,9 @@ except ImportError:
                      './dependencies?)\n')
     raise
 
-from stanza.unstable import config
-from stanza.unstable.instance import Instance
-from stanza.unstable.rng import get_rng
+from stanza.research import config
+from stanza.research.instance import Instance
+from stanza.research.rng import get_rng
 
 
 rng = get_rng()

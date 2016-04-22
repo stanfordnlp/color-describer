@@ -2,7 +2,7 @@ import operator
 import theano.tensor as T
 from collections import OrderedDict
 
-from stanza.unstable import config
+from stanza.research import config
 from neural import SimpleLasagneModel, NeuralLearner
 from vectorizers import SequenceVectorizer, BucketsVectorizer
 from neural import OPTIMIZERS

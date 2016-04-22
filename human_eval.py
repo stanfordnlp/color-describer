@@ -8,7 +8,7 @@ except ImportError, e:
 import colorsys
 from itertools import izip
 
-from stanza.unstable import config, evaluate, instance, learner, metrics, output, rng
+from stanza.research import config, evaluate, instance, learner, metrics, output, rng
 import html_report
 
 
