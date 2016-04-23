@@ -17,6 +17,7 @@ else:
 
 from stanza.research import evaluate, metrics, output, progress
 import datetime
+import numbers
 import learners
 import color_instances
 
@@ -74,7 +75,7 @@ def main():
          metrics.log_likelihood_bits,
          metrics.perplexity,
          metrics.aic]
-    if options.listener:
+    if options.listener and not isinstance(test_data[0].output, numbers.Integral):
         m.append(metrics.squared_error)
     else:
         m.append(metrics.accuracy)

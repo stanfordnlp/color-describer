@@ -138,13 +138,15 @@ def scalar_imp_level2_test(listener=False):
 
 def reference_game_train(gen_func):
     def generate_refgame_train(listener=False):
-        return reference_game(get_training_instances(), gen_func, listener=listener)
+        return reference_game(get_training_instances(listener=listener),
+                              gen_func, listener=listener)
     return generate_refgame_train
 
 
 def reference_game_test(gen_func):
     def generate_refgame_test(listener=False):
-        return reference_game(get_training_instances(), gen_func, listener=listener)
+        return reference_game(get_training_instances(listener=listener),
+                              gen_func, listener=listener)
     return generate_refgame_test
 
 

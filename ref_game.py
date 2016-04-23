@@ -112,6 +112,7 @@ class DirectRefGameLearner(Learner):
         predictions = []
         scores = []
         base_is_listener = (type(self.base) in listener.LISTENERS.values())
+        assert options.listener, 'Eval data should be listener data for DirectRefGameLearner'
 
         true_batch_size = options.listener_eval_batch_size / options.num_distractors
         batches = iterators.iter_batches(eval_instances, true_batch_size)
@@ -123,20 +124,20 @@ class DirectRefGameLearner(Learner):
         for batch_num, batch in enumerate(batches):
             progress.progress(batch_num)
             batch = list(batch)
-            assert batch[0].alt_inputs, 'No context given for direct listener testing'
-            context = len(batch[0].alt_inputs)
+            assert batch[0].alt_outputs, 'No context given for direct listener testing'
+            context = len(batch[0].alt_outputs)
             output_grid = [instance.Instance(inst.input, color)
                            if base_is_listener else
                            instance.Instance(color, inst.input)
-                           for inst in batch for color in inst.alt_inputs]
+                           for inst in batch for color in inst.alt_outputs]
             assert len(output_grid) == context * len(batch), \
                 'Context must be the same number of colors for all examples'
             true_indices = np.array([inst.output for inst in batch])
-            scores = self.base.score(output_grid, verbosity=verbosity)
-            log_probs = np.array(scores).reshape((len(batch), context))
+            grid_scores = self.base.score(output_grid, verbosity=verbosity)
+            log_probs = np.array(grid_scores).reshape((len(batch), context))
             # Renormalize over only the context colors, and extract the score of
             # the true color.
-            log_probs -= logsumexp(log_probs, axis=1)
+            log_probs -= logsumexp(log_probs, axis=1)[:, np.newaxis]
             assert log_probs.shape == (len(batch), context)
             pred_indices = np.argmax(log_probs, axis=1)
             predictions.extend(pred_indices.tolist())
