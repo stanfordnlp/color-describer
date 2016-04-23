@@ -1,6 +1,6 @@
 import cPickle as pickle
 
-import run_experiment
+import run_experiment  # NOQA: make sure we load all the command line args
 from stanza.research import config
 
 
