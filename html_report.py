@@ -18,6 +18,8 @@ parser.add_argument('--compare_dir', type=str, default=None,
 
 Output = namedtuple('Output', 'config,results,data,scores,predictions')
 
+MAX_ALTS = 10
+
 
 class NotPresent(object):
     def __repr__(self):
@@ -187,17 +189,22 @@ def format_number(value):
 def format_error_analysis(output, compare=None):
     examples_table_template = '''    <h3>{cond}</h3>
     <table>
-        <tr><th>input</th><th>gold</th><th>prediction</th><th>prob</th>{compare_header}</tr>
+        <tr><th>input</th>{alt_inputs_header}{alt_outputs_header}<th>gold</th><th>prediction</th><th>prob</th>{compare_header}</tr>
 {examples}
     </table>'''
 
-    example_template = '        <tr>{input}{output}{prediction}{pprob}{comparison}{cprob}</tr>'
+    example_template = '        <tr>{input}{alt_inputs}{alt_outputs}{output}' \
+                       '{prediction}{pprob}{comparison}{cprob}</tr>'
     score_template = '<td>{}</td>'
+    show_alt_inputs = max_len(output.data, 'alt_inputs')
+    show_alt_outputs = max_len(output.data, 'alt_outputs')
     collated = []
     for i, (inst, score, pred) in enumerate(zip(output.data, output.scores, output.predictions)):
         example = {}
         example['input'] = format_value(inst['input'])
+        example['alt_inputs'] = format_alts(inst['alt_inputs'], show_alt_inputs)
         example['output'] = format_value(inst['output'])
+        example['alt_outputs'] = format_alts(inst['alt_outputs'], show_alt_outputs)
         example['prediction'] = format_value(pred)
         pprob = np.exp(score) if isinstance(score, Number) else score
         example['pprob'] = score_template.format(format_number(pprob))
@@ -234,6 +241,10 @@ def format_error_analysis(output, compare=None):
 
     return '\n'.join(examples_table_template.format(
         cond=cond,
+        alt_inputs_header=(('<th>alt inputs</th>' if show_alt_inputs else '') +
+                           '<th></th>' * (show_alt_inputs - 1)),
+        alt_outputs_header=(('<th>alt outputs</th>' if show_alt_outputs else '') +
+                            '<th></th>' * (show_alt_outputs - 1)),
         compare_header='<th>comparison</th><th>prob</th>' if compare else '',
         examples='\n'.join(
             example_template.format(**inst) for inst in examples
@@ -250,6 +261,14 @@ def format_value(value):
     return '<td bgcolor="{color}">{value!r}</td>'.format(color=color, value=value)
 
 
+def format_alts(alts, num_alts):
+    if not alts:
+        alts = []
+    alts = alts[:num_alts]
+    alts = alts + [NotPresent()] * (num_alts - len(alts))
+    return ''.join(format_value(v) for v in alts)
+
+
 def web_color(hsv):
     '''
     >>> web_color((0.0, 100.0, 100.0))
@@ -262,6 +281,13 @@ def web_color(hsv):
     rgb = colorsys.hsv_to_rgb(*hsv_0_1)
     rgb_int = tuple(min(int(c * 256.0), 255) for c in rgb)
     return '#%02x%02x%02x' % rgb_int
+
+
+def max_len(insts, field):
+    result = 0
+    for inst in insts:
+        result = max(result, len(inst[field]) if inst[field] else 0)
+    return min(MAX_ALTS, result)
 
 
 def generate_html_reports(run_dir=None, compare_dir=None):
