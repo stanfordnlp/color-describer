@@ -63,10 +63,10 @@ def normalize_color(fragment):
     '''
     >>> normalize_color("'blue'")
     "'blue'"
-    >>> normalize_color("(0, 100, 100)")
-    'R'
+    >>> normalize_color("(60, 100, 100)")
+    'Y'
     >>> normalize_color("(120, 100, 100)")
-    'G'
+    '?'
     >>> normalize_color("(180, 100, 100)")
     'C'
     '''
