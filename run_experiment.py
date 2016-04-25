@@ -61,6 +61,9 @@ def main():
         listener=options.listener
     )[:options.train_size]
     if options.validation_size:
+        assert options.validation_size < len(train_data), \
+            ('No training data after validation split! (%d <= %d)' %
+             (len(train_data), options.validation_size))
         validation_data = train_data[-options.validation_size:]
         train_data = train_data[:-options.validation_size]
     else:
