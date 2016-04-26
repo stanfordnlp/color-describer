@@ -14,8 +14,8 @@ from stanza.research import config, progress, iterators, instance
 from stanza.research.rng import get_rng
 from neural import NeuralLearner, SimpleLasagneModel
 from neural import NONLINEARITIES, OPTIMIZERS, CELLS, sample
-from vectorizers import SequenceVectorizer, SymbolVectorizer, strip_invalid_tokens
-from vectorizers import BucketsVectorizer, RawVectorizer, MSVectorizer, FourierVectorizer
+from vectorizers import SequenceVectorizer, SymbolVectorizer, strip_invalid_tokens, COLOR_REPRS
+from vectorizers import BucketsVectorizer
 
 parser = config.get_options_parser()
 parser.add_argument('--speaker_cell_size', type=int, default=20,
@@ -63,15 +63,6 @@ parser.add_argument('--speaker_learning_rate', type=float, default=0.1,
 parser.add_argument('--speaker_grad_clipping', type=float, default=0.0,
                     help='The maximum absolute value of the gradient messages for the'
                          'cell component of the speaker model.')
-
-
-COLOR_REPRS = {
-    'raw': RawVectorizer,
-    'buckets': BucketsVectorizer,
-    'ms': MSVectorizer,
-    'fourier': FourierVectorizer,
-}
-
 parser.add_argument('--speaker_color_repr', choices=COLOR_REPRS.keys(), default='buckets',
                     help='The representation of the color to use in the speaker model: a regular '
                          'grid of `buckets` or the `raw` RGB/HSV values.')
@@ -120,13 +111,14 @@ class SpeakerLearner(NeuralLearner):
     An speaker with a feedforward neural net color input passed into an RNN
     to generate a description.
     '''
-    def __init__(self, id=None):
+    def __init__(self, id=None, context_len=1):
         super(SpeakerLearner, self).__init__(id=id)
         options = config.options()
         self.seq_vec = SequenceVectorizer()
         color_repr = COLOR_REPRS[options.speaker_color_repr]
         self.color_vec = color_repr(options.speaker_color_resolution,
                                     hsv=options.speaker_hsv)
+        self.context_len = context_len
 
     def predict(self, eval_instances, random=False, verbosity=0):
         options = config.options()
@@ -199,8 +191,17 @@ class SpeakerLearner(NeuralLearner):
                         init_vectorizer=False, test=False, inverted=False):
         options = config.options()
 
+        use_context = hasattr(self, 'context_len') and self.context_len > 1
+
         get_i, get_o = (lambda inst: inst.input), (lambda inst: inst.output)
         get_color, get_desc = (get_o, get_i) if inverted else (get_i, get_o)
+        if use_context:
+            get_color_index = get_color
+            get_i, get_o = ((lambda inst: inst.alt_inputs[inst.input]),
+                            (lambda inst: inst.alt_outputs[inst.output]))
+            get_color = get_o if inverted else get_i
+        get_alt_i, get_alt_o = (lambda inst: inst.alt_inputs), (lambda inst: inst.alt_outputs)
+        get_alt_colors = get_alt_o if inverted else get_alt_i
 
         if init_vectorizer:
             self.seq_vec.add_all(['<s>'] + get_desc(inst).split() + ['</s>']
@@ -224,6 +225,12 @@ class SpeakerLearner(NeuralLearner):
             if options.verbosity >= 9:
                 print('%s, %s -> %s' % (repr(color), repr(prev), repr(next)))
             colors.append(color)
+            if use_context:
+                new_context = get_alt_colors(inst)
+                index = get_color_index(inst)
+                assert len(new_context) == self.context_len, \
+                    'Inconsistent context lengths: %s' % ((self.context_len, len(new_context)),)
+                colors.extend([c for j, c in enumerate(new_context) if j != index])
             previous.append(prev)
             next_tokens.append(next)
 
@@ -231,6 +238,11 @@ class SpeakerLearner(NeuralLearner):
         mask = np.zeros((len(previous), self.seq_vec.max_len - 1), dtype=np.int32)
         N = np.zeros((len(next_tokens), self.seq_vec.max_len - 1), dtype=np.int32)
         c = self.color_vec.vectorize_all(colors, hsv=True)
+        if len(c.shape) == 1:
+            c = c.reshape((len(colors) / self.context_len, self.context_len))
+        else:
+            c = c.reshape((len(colors) / self.context_len, self.context_len * c.shape[1]) +
+                          c.shape[2:])
         for i, (color, prev, next) in enumerate(zip(colors, previous, next_tokens)):
             if len(prev) > P.shape[1]:
                 prev = prev[:P.shape[1]]
@@ -259,7 +271,7 @@ class SpeakerLearner(NeuralLearner):
         ]
         target_var = T.imatrix(id_tag + 'targets')
 
-        self.l_out, self.input_layers = self. _get_l_out(input_vars)
+        self.l_out, self.input_layers = self._get_l_out(input_vars)
         self.model = model_class(input_vars, [target_var], self.l_out, id=self.id,
                                  loss=self.masked_loss(input_vars),
                                  optimizer=OPTIMIZERS[options.speaker_optimizer],
@@ -284,6 +296,7 @@ class SpeakerLearner(NeuralLearner):
             color_input_vars,
             recurrent_length=self.seq_vec.max_len - 1,
             cell_size=options.speaker_cell_size,
+            context_len=self.context_len,
             id=self.id
         )
         l_hidden_color = dimshuffle(l_color_repr, (0, 2, 1))
@@ -353,6 +366,13 @@ class SpeakerLearner(NeuralLearner):
     def sample_prior_smooth(self, num_samples):
         return [instance.Instance(input=c) for c in
                 self.prior_smooth.sample(num_samples)]
+
+
+class ContextSpeakerLearner(SpeakerLearner):
+    def __init__(self, *args, **kwargs):
+        options = config.options()
+        context = options.num_distractors + 1
+        return super(ContextSpeakerLearner, self).__init__(*args, context_len=context, **kwargs)
 
 
 def check_options(options):
@@ -480,7 +500,7 @@ class AtomicSpeakerLearner(NeuralLearner):
             sentences.append(desc)
             colors.append(color)
 
-        x = self.color_vec.vectorize_all(colors, hsv=True)
+        x = self.color_vec.vectorize_all(colors, hsv=True)[:, np.newaxis]
         y = self.seq_vec.vectorize_all(sentences)
         if options.verbosity >= 9:
             print('%s x: %s' % (self.id, x))
@@ -556,5 +576,6 @@ class AtomicSpeakerLearner(NeuralLearner):
 
 SPEAKERS = {
     'Speaker': SpeakerLearner,
+    'ContextSpeaker': ContextSpeakerLearner,
     'AtomicSpeaker': AtomicSpeakerLearner,
 }

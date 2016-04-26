@@ -5,7 +5,7 @@ from stanza.research.learner import Learner
 from stanza.research import progress, config
 from lux import LuxLearner
 from listener import ListenerLearner, AtomicListenerLearner
-from speaker import SpeakerLearner, AtomicSpeakerLearner
+from speaker import SpeakerLearner, ContextSpeakerLearner, AtomicSpeakerLearner
 from vectorizers import BucketsVectorizer
 from rsa import RSALearner
 
@@ -311,6 +311,7 @@ LEARNERS = {
     'Listener': ListenerLearner,
     'AtomicListener': AtomicListenerLearner,
     'Speaker': SpeakerLearner,
+    'ContextSpeaker': ContextSpeakerLearner,
     'AtomicSpeaker': AtomicSpeakerLearner,
     'RSA': RSALearner,
     'MostCommon': MostCommonSpeakerLearner,

@@ -184,9 +184,9 @@ class ColorVectorizer(object):
             vectorizer.
         '''
         id_tag = (id + '/') if id else ''
-        return [(T.imatrix if recurrent else T.ivector)(id_tag + 'colors')]
+        return [(T.itensor3 if recurrent else T.imatrix)(id_tag + 'colors')]
 
-    def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20, id=None):
+    def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20, context_len=1, id=None):
         '''
         :param input_vars: The input variables returned from
             `get_input_vars`.
@@ -366,16 +366,23 @@ class BucketsVectorizer(ColorVectorizer):
                 images[axis][:, :, axis] = (xsection * (ranges[axis] - C_EPSILON)).astype(np.int)
         return images
 
-    def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20, id=None):
+    def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20,
+                        context_len=1, id=None):
         id_tag = (id + '/') if id else ''
         (input_var,) = input_vars
-        shape = (None,) if recurrent_length == 0 else (None, recurrent_length)
-        l_color = InputLayer(shape=shape, input_var=input_var,
+        input_shape = ((None, context_len)
+                       if recurrent_length == 0 else
+                       (None, recurrent_length, context_len))
+        l_color = InputLayer(shape=input_shape, input_var=input_var,
                              name=id_tag + 'color_input')
         l_color_embed = EmbeddingLayer(l_color, input_size=self.num_types,
                                        output_size=cell_size,
                                        name=id_tag + 'color_embed')
-        return l_color_embed, [l_color]
+        output_shape = ((-1, context_len * cell_size)
+                        if recurrent_length == 0 else
+                        (-1, recurrent_length, context_len * cell_size))
+        l_color_shape = reshape(l_color_embed, output_shape)
+        return l_color_shape, [l_color]
 
     def __setstate__(self, state):
         # Recompute bucket sizes, patch over hsv attribute for pickle backwards
@@ -438,16 +445,12 @@ class MSVectorizer(ColorVectorizer):
     def visualize_distribution(self, dist):
         return self.buckets[0].visualize_distribution(dist)
 
-    def get_input_vars(self, id=None, recurrent=False):
-        id_tag = (id + '/') if id else ''
-        return [(T.itensor3 if recurrent else T.imatrix)(id_tag + 'colors')]
-
-    def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20, id=None):
+    def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20, context_len=1, id=None):
         id_tag = (id + '/') if id else ''
         (input_var,) = input_vars
-        shape = ((None, len(self.buckets))
+        shape = ((None, context_len * len(self.buckets))
                  if recurrent_length == 0 else
-                 (None, recurrent_length, len(self.buckets)))
+                 (None, recurrent_length, context_len * len(self.buckets)))
         l_color = InputLayer(shape=shape, input_var=input_var,
                              name=id_tag + 'color_input')
         l_color_embed = EmbeddingLayer(l_color, input_size=sum(b.num_types for b in self.buckets),
@@ -557,10 +560,12 @@ class RawVectorizer(ColorVectorizer):
         id_tag = (id + '/') if id else ''
         return [(T.tensor3 if recurrent else T.matrix)(id_tag + 'colors')]
 
-    def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20, id=None):
+    def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20, context_len=1, id=None):
         id_tag = (id + '/') if id else ''
         (input_var,) = input_vars
-        shape = (None, 3) if recurrent_length == 0 else (None, recurrent_length, 3)
+        shape = ((None, context_len * 3)
+                 if recurrent_length == 0 else
+                 (None, recurrent_length, context_len * 3))
         l_color = InputLayer(shape=shape, input_var=input_var,
                              name=id_tag + 'color_input')
         return l_color, [l_color]
@@ -656,12 +661,13 @@ class FourierVectorizer(ColorVectorizer):
         id_tag = (id + '/') if id else ''
         return [(T.tensor3 if recurrent else T.matrix)(id_tag + 'colors')]
 
-    def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20, id=None):
+    def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20,
+                        context_len=1, id=None):
         id_tag = (id + '/') if id else ''
         (input_var,) = input_vars
-        shape = ((None, self.output_size)
+        shape = ((None, self.output_size * context_len)
                  if recurrent_length == 0 else
-                 (None, recurrent_length, self.output_size))
+                 (None, recurrent_length, self.output_size * context_len))
         l_color = InputLayer(shape=shape, input_var=input_var,
                              name=id_tag + 'color_input')
         return l_color, [l_color]
@@ -673,6 +679,14 @@ def strip_invalid_tokens(sentence):
         end_pos = good_tokens.index('</s>')
         good_tokens = good_tokens[:end_pos]
     return good_tokens
+
+
+COLOR_REPRS = {
+    'raw': RawVectorizer,
+    'buckets': BucketsVectorizer,
+    'ms': MSVectorizer,
+    'fourier': FourierVectorizer,
+}
 
 
 # neural has to import some of the classes above to keep pickle files readable.
