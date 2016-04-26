@@ -4,7 +4,7 @@ import numpy as np
 from stanza.research.learner import Learner
 from stanza.research import progress, config
 from lux import LuxLearner
-from listener import ListenerLearner, AtomicListenerLearner
+from listener import ListenerLearner, ContextListenerLearner, AtomicListenerLearner
 from speaker import SpeakerLearner, ContextSpeakerLearner, AtomicSpeakerLearner
 from vectorizers import BucketsVectorizer
 from rsa import RSALearner
@@ -309,6 +309,7 @@ LEARNERS = {
     'Histogram': HistogramLearner,
     'Lux': LuxLearner,
     'Listener': ListenerLearner,
+    'ContextListener': ContextListenerLearner,
     'AtomicListener': AtomicListenerLearner,
     'Speaker': SpeakerLearner,
     'ContextSpeaker': ContextSpeakerLearner,

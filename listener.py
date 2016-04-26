@@ -4,6 +4,7 @@ import theano.tensor as T
 import warnings
 from collections import Counter
 from lasagne.layers import InputLayer, DropoutLayer, DenseLayer, EmbeddingLayer, NonlinearityLayer
+from lasagne.layers import NINLayer, ConcatLayer, dimshuffle
 from lasagne.layers.recurrent import Gate
 from lasagne.init import Constant
 from lasagne.objectives import categorical_crossentropy
@@ -14,7 +15,7 @@ from stanza.research import config, instance, progress, iterators, rng
 from neural import NeuralLearner, SimpleLasagneModel
 from neural import NONLINEARITIES, OPTIMIZERS, CELLS, sample
 from vectorizers import SequenceVectorizer, BucketsVectorizer, SymbolVectorizer
-from vectorizers import strip_invalid_tokens
+from vectorizers import strip_invalid_tokens, COLOR_REPRS
 
 random = rng.get_rng()
 
@@ -38,6 +39,9 @@ parser.add_argument('--listener_dropout', type=float, default=0.2,
 parser.add_argument('--listener_color_resolution', type=int, nargs='+', default=[4],
                     help='The number of buckets along each dimension of color space '
                          'for the output of the listener model.')
+parser.add_argument('--listener_hidden_color_layers', type=int, default=0,
+                    help='The number of dense layers after the color representation '
+                         '(ContextListenerLearner only).')
 parser.add_argument('--listener_hsv', type=config.boolean, default=False,
                     help='If True, output color buckets are in HSV space; otherwise, '
                          'color buckets will be in RGB. Final output instances will be in HSV '
@@ -49,11 +53,16 @@ parser.add_argument('--listener_eval_batch_size', type=int, default=65536,
                          'not affect modeling accuracy.')
 parser.add_argument('--listener_optimizer', choices=OPTIMIZERS.keys(), default='rmsprop',
                     help='The optimization (update) algorithm to use for listener training.')
-parser.add_argument('--listener_learning_rate', type=float, default=1.0,
+parser.add_argument('--listener_learning_rate', type=float, default=0.1,
                     help='The learning rate to use for listener training.')
 parser.add_argument('--listener_grad_clipping', type=float, default=0.0,
                     help='The maximum absolute value of the gradient messages for the'
                          'LSTM component of the listener model.')
+parser.add_argument('--listener_color_repr', choices=COLOR_REPRS.keys(), default='buckets',
+                    help='The representation of the color to use in the listener model: a regular '
+                         'grid of `buckets`, overlapping bucket grids at multiple resolutions '
+                         '(`ms`), `raw` RGB/HSV values, or a `fourier` transform-based '
+                         'representation. Only used for ContextListenerLearner.')
 
 
 class UnigramPrior(object):
@@ -160,8 +169,8 @@ class ListenerLearner(NeuralLearner):
         options = config.options()
         self.word_counts = Counter()
         self.seq_vec = SequenceVectorizer()
-        self.color_vec = BucketsVectorizer(options.speaker_color_resolution,
-                                           hsv=options.speaker_hsv)
+        self.color_vec = BucketsVectorizer(options.listener_color_resolution,
+                                           hsv=options.listener_hsv)
 
     def predict_and_score(self, eval_instances, random=False, verbosity=0):
         options = config.options()
@@ -183,13 +192,10 @@ class ListenerLearner(NeuralLearner):
             probs = self.model.predict(xs)
             if random:
                 indices = sample(probs)
-                predictions.extend(self.color_vec.unvectorize_all(indices,
-                                                                  random=True, hsv=True))
+                predictions.extend(self.unvectorize(indices, random=True))
             else:
-                predictions.extend(self.color_vec.unvectorize_all(probs.argmax(axis=1),
-                                                                  hsv=True))
-            bucket_volume = (256.0 ** 3) / self.color_vec.num_types
-            scores_arr = np.log(probs[np.arange(len(batch)), y]) - np.log(bucket_volume)
+                predictions.extend(self.unvectorize(probs.argmax(axis=1)))
+            scores_arr = np.log(probs[np.arange(len(batch)), y]) + self.bucket_adjustment()
             scores.extend(scores_arr.tolist())
         progress.end_task()
         if options.verbosity >= 9:
@@ -198,6 +204,13 @@ class ListenerLearner(NeuralLearner):
                 print('%s -> %s' % (repr(inst.input), repr(prediction)))
 
         return predictions, scores
+
+    def unvectorize(self, indices, random=False):
+        return self.color_vec.unvectorize_all(indices, random=random, hsv=True)
+
+    def bucket_adjustment(self):
+        bucket_volume = (256.0 ** 3) / self.color_vec.num_types
+        return -np.log(bucket_volume)
 
     def on_iter_end(self, step, writer):
         most_common = [desc for desc, count in self.word_counts.most_common(10)]
@@ -284,15 +297,15 @@ class ListenerLearner(NeuralLearner):
                                     output_size=options.listener_cell_size,
                                     name=id_tag + 'desc_embed')
 
-        cell = CELLS[options.speaker_cell]
+        cell = CELLS[options.listener_cell]
         cell_kwargs = {
-            'grad_clipping': options.speaker_grad_clipping,
+            'grad_clipping': options.listener_grad_clipping,
             'num_units': options.listener_cell_size,
         }
-        if options.speaker_cell == 'LSTM':
-            cell_kwargs['forgetgate'] = Gate(b=Constant(options.speaker_forget_bias))
-        if options.speaker_cell != 'GRU':
-            cell_kwargs['nonlinearity'] = NONLINEARITIES[options.speaker_nonlinearity]
+        if options.listener_cell == 'LSTM':
+            cell_kwargs['forgetgate'] = Gate(b=Constant(options.listener_forget_bias))
+        if options.listener_cell != 'GRU':
+            cell_kwargs['nonlinearity'] = NONLINEARITIES[options.listener_nonlinearity]
 
         l_rec1 = cell(l_in_embed, name=id_tag + 'rec1', **cell_kwargs)
         if options.listener_dropout > 0.0:
@@ -323,6 +336,164 @@ class ListenerLearner(NeuralLearner):
 
     def sample_prior_smooth(self, num_samples):
         return [instance.Instance(input=c) for c in self.prior_smooth.sample(num_samples)]
+
+
+class ContextListenerLearner(ListenerLearner):
+    def __init__(self, *args, **kwargs):
+        super(ContextListenerLearner, self).__init__(*args, **kwargs)
+
+        options = config.options()
+        self.context_len = options.num_distractors + 1
+        color_repr = COLOR_REPRS[options.listener_color_repr]
+        self.color_vec = color_repr(options.listener_color_resolution,
+                                    hsv=options.listener_hsv)
+
+    def unvectorize(self, indices, random=False):
+        return indices
+
+    def bucket_adjustment(self):
+        return 0.0
+
+    def on_iter_end(self, step, writer):
+        pass
+
+    def _build_model(self, model_class=SimpleLasagneModel):
+        options = config.options()
+        id_tag = (self.id + '/') if self.id else ''
+
+        input_var = T.imatrix(id_tag + 'inputs')
+        context_vars = self.color_vec.get_input_vars(self.id, recurrent=True)
+        target_var = T.ivector(id_tag + 'targets')
+
+        self.l_out, self.input_layers = self._get_l_out([input_var] + context_vars)
+        self.loss = categorical_crossentropy
+
+        self.model = model_class([input_var] + context_vars, [target_var], self.l_out,
+                                 loss=self.loss, optimizer=OPTIMIZERS[options.listener_optimizer],
+                                 learning_rate=options.listener_learning_rate,
+                                 id=self.id)
+
+    def _data_to_arrays(self, training_instances,
+                        init_vectorizer=False, test=False, inverted=False):
+        options = config.options()
+
+        get_i, get_o = (lambda inst: inst.input), (lambda inst: inst.output)
+        get_desc, get_color_index = (get_o, get_i) if inverted else (get_i, get_o)
+        get_alt_i, get_alt_o = (lambda inst: inst.alt_inputs), (lambda inst: inst.alt_outputs)
+        get_alt_colors = get_alt_i if inverted else get_alt_o
+
+        if init_vectorizer:
+            self.seq_vec.add_all(['<s>'] + get_desc(inst).split() + ['</s>']
+                                 for inst in training_instances)
+            self.word_counts.update([get_desc(inst) for inst in training_instances])
+
+        sentences = []
+        colors = []
+        target_indices = []
+        if options.verbosity >= 9:
+            print('%s _data_to_arrays:' % self.id)
+        for i, inst in enumerate(training_instances):
+            desc = get_desc(inst).split()
+            target = get_color_index(inst)
+            if target is None:
+                assert test
+                target = 0
+            s = ['<s>'] * (self.seq_vec.max_len - 1 - len(desc)) + desc
+            s.append('</s>')
+            new_context = get_alt_colors(inst)
+            assert len(new_context) == self.context_len, \
+                'Inconsistent context lengths: %s' % ((self.context_len, len(new_context)),)
+            if options.verbosity >= 9:
+                print('%s [%s] -> %s' % (repr(s), repr(new_context), repr(target)))
+            sentences.append(s)
+            target_indices.append(target)
+            colors.extend(new_context)
+
+        x = np.zeros((len(sentences), self.seq_vec.max_len), dtype=np.int32)
+        for i, sentence in enumerate(sentences):
+            x[i, :] = self.seq_vec.vectorize(sentence)
+        y = np.array(target_indices, dtype=np.int32)
+
+        c = self.color_vec.vectorize_all(colors, hsv=True)
+        if len(c.shape) == 1:
+            c = c.reshape((len(colors) / self.context_len, self.context_len))
+        else:
+            c = c.reshape((len(colors) / self.context_len, self.context_len * c.shape[1]) +
+                          c.shape[2:])
+        c = np.tile(c[:, np.newaxis, ...], [1, self.seq_vec.max_len] + [1] * (c.ndim - 1))
+
+        if options.verbosity >= 9:
+            print('x: %s' % (repr(x),))
+            print('c: %s' % (repr(c),))
+            print('y: %s' % (repr(y),))
+        return [x, c], [y]
+
+    def _get_l_out(self, input_vars):
+        options = config.options()
+        check_options(options)
+        id_tag = (self.id + '/') if self.id else ''
+
+        input_var = input_vars[0]
+        context_vars = input_vars[1:]
+
+        l_in = InputLayer(shape=(None, self.seq_vec.max_len), input_var=input_var,
+                          name=id_tag + 'desc_input')
+        l_in_embed = EmbeddingLayer(l_in, input_size=len(self.seq_vec.tokens),
+                                    output_size=options.listener_cell_size,
+                                    name=id_tag + 'desc_embed')
+
+        # Context repr has shape (batch_size, seq_len, context_len * repr_size)
+        l_context_repr, context_inputs = self.color_vec.get_input_layer(
+            context_vars,
+            recurrent_length=self.seq_vec.max_len,
+            cell_size=options.listener_cell_size,
+            context_len=self.context_len,
+            id=self.id
+        )
+        l_hidden_context = dimshuffle(l_context_repr, (0, 2, 1))
+        for i in range(1, options.listener_hidden_color_layers + 1):
+            l_hidden_context = NINLayer(l_hidden_context, num_units=options.listener_cell_size,
+                                        nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
+                                        name=id_tag + 'hidden_context%d' % i)
+        l_hidden_context = dimshuffle(l_hidden_context, (0, 2, 1))
+        l_concat = ConcatLayer([l_hidden_context, l_in_embed], axis=2,
+                               name=id_tag + 'concat_inp_context')
+
+        cell = CELLS[options.listener_cell]
+        cell_kwargs = {
+            'grad_clipping': options.listener_grad_clipping,
+            'num_units': options.listener_cell_size,
+        }
+        if options.listener_cell == 'LSTM':
+            cell_kwargs['forgetgate'] = Gate(b=Constant(options.listener_forget_bias))
+        if options.listener_cell != 'GRU':
+            cell_kwargs['nonlinearity'] = NONLINEARITIES[options.listener_nonlinearity]
+
+        l_rec1 = cell(l_concat, name=id_tag + 'rec1', **cell_kwargs)
+        if options.listener_dropout > 0.0:
+            l_rec1_drop = DropoutLayer(l_rec1, p=options.listener_dropout,
+                                       name=id_tag + 'rec1_drop')
+        else:
+            l_rec1_drop = l_rec1
+        l_rec2 = cell(l_rec1_drop, name=id_tag + 'rec2', **cell_kwargs)
+        if options.listener_dropout > 0.0:
+            l_rec2_drop = DropoutLayer(l_rec2, p=options.listener_dropout,
+                                       name=id_tag + 'rec2_drop')
+        else:
+            l_rec2_drop = l_rec2
+
+        l_hidden = DenseLayer(l_rec2_drop, num_units=options.listener_cell_size,
+                              nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
+                              name=id_tag + 'hidden')
+        if options.listener_dropout > 0.0:
+            l_hidden_drop = DropoutLayer(l_hidden, p=options.listener_dropout,
+                                         name=id_tag + 'hidden_drop')
+        else:
+            l_hidden_drop = l_hidden
+        l_scores = DenseLayer(l_hidden_drop, num_units=self.context_len, nonlinearity=softmax,
+                              name=id_tag + 'scores')
+
+        return l_scores, [l_in]
 
 
 class AtomicListenerLearner(ListenerLearner):
@@ -441,5 +612,6 @@ def check_options(options):
 
 LISTENERS = {
     'Listener': ListenerLearner,
+    'ContextListener': ContextListenerLearner,
     'AtomicListener': AtomicListenerLearner,
 }
