@@ -8,7 +8,7 @@ from numbers import Number
 from unittest import TestCase
 
 import run_experiment  # NOQA: for command line options
-from stanza.unstable import config, instance, summary
+from stanza.research import config, instance, summary
 from learners import HistogramLearner, LookupLearner
 from learners import MostCommonSpeakerLearner, RandomListenerLearner
 from speaker import SpeakerLearner, AtomicSpeakerLearner
@@ -86,10 +86,10 @@ class TestModels(TestCase):
 
         mo = MockOpen(TEST_DIR)
         mgfp = mock_get_file_path(TEST_DIR)
-        with mock.patch('stanza.unstable.summary.open', mo), \
-                mock.patch('stanza.unstable.summary.SummaryWriter', MockSummaryWriter), \
-                mock.patch('stanza.unstable.config.open', mo), \
-                mock.patch('stanza.unstable.config.get_file_path', mgfp):
+        with mock.patch('stanza.research.summary.open', mo), \
+                mock.patch('stanza.research.summary.SummaryWriter', MockSummaryWriter), \
+                mock.patch('stanza.research.config.open', mo), \
+                mock.patch('stanza.research.config.get_file_path', mgfp):
             speaker = speaker_class()
             train_data = [instance.Instance((0, 255, 0), 'green')]
             speaker.train(train_data)
@@ -156,10 +156,10 @@ class TestModels(TestCase):
 
         mo = MockOpen(TEST_DIR)
         mgfp = mock_get_file_path(TEST_DIR)
-        with mock.patch('stanza.unstable.summary.open', mo), \
-                mock.patch('stanza.unstable.summary.SummaryWriter', MockSummaryWriter), \
-                mock.patch('stanza.unstable.config.open', mo), \
-                mock.patch('stanza.unstable.config.get_file_path', mgfp):
+        with mock.patch('stanza.research.summary.open', mo), \
+                mock.patch('stanza.research.summary.SummaryWriter', MockSummaryWriter), \
+                mock.patch('stanza.research.config.open', mo), \
+                mock.patch('stanza.research.config.get_file_path', mgfp):
             listener = listener_class()
             train_data = [instance.Instance('green', (0, 255, 0))]
             listener.train(train_data)
