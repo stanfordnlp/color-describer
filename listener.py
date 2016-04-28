@@ -12,6 +12,8 @@ from lasagne.nonlinearities import softmax
 from lasagne.updates import rmsprop
 
 from stanza.research import config, instance, progress, iterators, rng
+import color_instances
+import speaker
 from neural import NeuralLearner, SimpleLasagneModel
 from neural import NONLINEARITIES, OPTIMIZERS, CELLS, sample
 from vectorizers import SequenceVectorizer, BucketsVectorizer, SymbolVectorizer
@@ -70,7 +72,7 @@ class UnigramPrior(object):
     >>> p = UnigramPrior()
     >>> p.train([instance.Instance('blue')])
     >>> p.sample(3)  # doctest: +ELLIPSIS
-    ['...', '...', '...']
+    [Instance('...', None), Instance('...', None), Instance('...', None)]
     '''
     def __init__(self):
         self.vec = SequenceVectorizer()
@@ -107,7 +109,8 @@ class UnigramPrior(object):
         indices = np.array([[sample(self.counts.get_value() * 1.0 / self.total.get_value())
                              for _t in range(self.vec.max_len)]
                             for _s in range(num_samples)], dtype=np.int32)
-        return [' '.join(strip_invalid_tokens(s)) for s in self.vec.unvectorize_all(indices)]
+        return [instance.Instance(' '.join(strip_invalid_tokens(s)))
+                for s in self.vec.unvectorize_all(indices)]
 
     def pad(self, sequences, length):
         '''
@@ -128,7 +131,7 @@ class AtomicUniformPrior(object):
     >>> p = AtomicUniformPrior()
     >>> p.train([instance.Instance('blue')])
     >>> p.sample(3)  # doctest: +ELLIPSIS
-    ['...', '...', '...']
+    [Instance('...', None), Instance('...', None), Instance('...', None)]
     '''
     def __init__(self):
         self.vec = SymbolVectorizer()
@@ -147,12 +150,50 @@ class AtomicUniformPrior(object):
 
     def sample(self, num_samples=1):
         indices = random.randint(0, self.vec.num_types, size=(num_samples,))
-        return self.vec.unvectorize_all(indices)
+        return [instance.Instance(c) for c in self.vec.unvectorize_all(indices)]
+
+
+class UnigramContextPrior(UnigramPrior):
+    def __init__(self):
+        super(UnigramContextPrior, self).__init__()
+        self.uniform_colors = speaker.UniformPrior()
+
+    def apply(self, input_vars):
+        options = config.options()
+        context_len = options.num_distractors + 1
+        return (super(UnigramContextPrior, self).apply(input_vars) -
+                3.0 * np.log(256.0) * context_len)
+
+    def sample(self, num_samples=1):
+        descs = super(UnigramContextPrior, self).sample(num_samples=num_samples)
+        colors = self.uniform_colors.sample(num_samples)
+        insts = [instance.Instance(d.input, c.input) for d, c in zip(descs, colors)]
+        return color_instances.reference_game(insts, color_instances.uniform, listener=True)
+
+
+class AtomicUniformContextPrior(AtomicUniformPrior):
+    def __init__(self):
+        super(AtomicUniformContextPrior, self).__init__()
+        self.uniform_colors = speaker.UniformPrior()
+
+    def apply(self, input_vars):
+        options = config.options()
+        context_len = options.num_distractors + 1
+        return (super(AtomicUniformContextPrior, self).apply(input_vars) -
+                3.0 * np.log(256.0) * context_len)
+
+    def sample(self, num_samples=1):
+        descs = super(AtomicUniformContextPrior, self).sample(num_samples=num_samples)
+        colors = self.uniform_colors.sample(num_samples)
+        insts = [instance.Instance(d.input, c.input) for d, c in zip(descs, colors)]
+        return color_instances.reference_game(insts, color_instances.uniform, listener=True)
 
 
 PRIORS = {
     'Unigram': UnigramPrior,
     'AtomicUniform': AtomicUniformPrior,
+    'UnigramContext': UnigramContextPrior,
+    'AtomicUniformContext': AtomicUniformContextPrior,
 }
 
 parser.add_argument('--listener_prior', choices=PRIORS.keys(), default='Unigram',
@@ -335,7 +376,7 @@ class ListenerLearner(NeuralLearner):
         return l_out, [l_in]
 
     def sample_prior_smooth(self, num_samples):
-        return [instance.Instance(input=c) for c in self.prior_smooth.sample(num_samples)]
+        return self.prior_smooth.sample(num_samples)
 
 
 class ContextListenerLearner(ListenerLearner):
@@ -493,7 +534,7 @@ class ContextListenerLearner(ListenerLearner):
         l_scores = DenseLayer(l_hidden_drop, num_units=self.context_len, nonlinearity=softmax,
                               name=id_tag + 'scores')
 
-        return l_scores, [l_in]
+        return l_scores, [l_in] + context_inputs
 
 
 class AtomicListenerLearner(ListenerLearner):
@@ -591,7 +632,7 @@ class AtomicListenerLearner(ListenerLearner):
         return l_out, [l_in]
 
     def sample_prior_smooth(self, num_samples):
-        return [instance.Instance(input=c) for c in self.prior_smooth.sample(num_samples)]
+        return self.prior_smooth.sample(num_samples)
 
 
 def check_options(options):

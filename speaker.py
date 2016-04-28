@@ -1,3 +1,4 @@
+import numbers
 import numpy as np
 import theano.tensor as T
 import warnings
@@ -12,6 +13,7 @@ from lasagne.updates import rmsprop
 
 from stanza.research import config, progress, iterators, instance
 from stanza.research.rng import get_rng
+import color_instances
 from neural import NeuralLearner, SimpleLasagneModel
 from neural import NONLINEARITIES, OPTIMIZERS, CELLS, sample
 from vectorizers import SequenceVectorizer, SymbolVectorizer, strip_invalid_tokens, COLOR_REPRS
@@ -102,8 +104,35 @@ class UniformPrior(object):
         :return: a list of `num_samples` colors sampled uniformly in RGB space,
                  but expressed as HSV triples.
         '''
-        return self.sampler.unvectorize_all(np.zeros(num_samples, dtype=np.int32),
-                                            random=True, hsv=True)
+        colors = self.sampler.unvectorize_all(np.zeros(num_samples, dtype=np.int32),
+                                              random=True, hsv=True)
+        return [instance.Instance(c) for c in colors]
+
+
+class UniformContextPrior(UniformPrior):
+    def __init__(self, recurrent=False):
+        super(UniformContextPrior, self).__init__(recurrent=recurrent)
+
+    def apply(self, input_vars):
+        options = config.options()
+        context_len = options.num_distractors
+        return (super(UniformContextPrior, self).apply(input_vars) -
+                3.0 * np.log(256.0) * context_len)
+
+    def sample(self, num_samples=1):
+        colors = super(UniformContextPrior, self).sample(num_samples)
+        insts = [instance.Instance(c.input) for c in colors]
+        return color_instances.reference_game(insts, color_instances.uniform, listener=False)
+
+
+PRIORS = {
+    'Uniform': UniformPrior,
+    'UniformContext': UniformContextPrior,
+}
+
+parser.add_argument('--speaker_prior', choices=PRIORS.keys(), default='Uniform',
+                    help='The prior model for the speaker (prior over colors). '
+                         'Only used in RSA learner.')
 
 
 class SpeakerLearner(NeuralLearner):
@@ -195,11 +224,9 @@ class SpeakerLearner(NeuralLearner):
 
         get_i, get_o = (lambda inst: inst.input), (lambda inst: inst.output)
         get_color, get_desc = (get_o, get_i) if inverted else (get_i, get_o)
-        if use_context:
-            get_color_index = get_color
-            get_i, get_o = ((lambda inst: inst.alt_inputs[inst.input]),
-                            (lambda inst: inst.alt_outputs[inst.output]))
-            get_color = get_o if inverted else get_i
+        get_i_ind, get_o_ind = ((lambda inst: inst.alt_inputs[inst.input]),
+                                (lambda inst: inst.alt_outputs[inst.output]))
+        get_color_indexed = get_o_ind if inverted else get_i_ind
         get_alt_i, get_alt_o = (lambda inst: inst.alt_inputs), (lambda inst: inst.alt_outputs)
         get_alt_colors = get_alt_o if inverted else get_alt_i
 
@@ -214,6 +241,8 @@ class SpeakerLearner(NeuralLearner):
             print('%s _data_to_arrays:' % self.id)
         for i, inst in enumerate(training_instances):
             desc, color = get_desc(inst), get_color(inst)
+            if isinstance(color, numbers.Number):
+                color = get_color_indexed(inst)
             if test:
                 full = ['<s>'] + ['</s>'] * (self.seq_vec.max_len - 2)
             else:
@@ -227,7 +256,7 @@ class SpeakerLearner(NeuralLearner):
             colors.append(color)
             if use_context:
                 new_context = get_alt_colors(inst)
-                index = get_color_index(inst)
+                index = get_color(inst)
                 assert len(new_context) == self.context_len, \
                     'Inconsistent context lengths: %s' % ((self.context_len, len(new_context)),)
                 colors.extend([c for j, c in enumerate(new_context) if j != index])
@@ -278,8 +307,10 @@ class SpeakerLearner(NeuralLearner):
                                  learning_rate=options.speaker_learning_rate)
 
     def train_priors(self, training_instances, listener_data=False):
-        self.prior_emp = UniformPrior(recurrent=True)
-        self.prior_smooth = UniformPrior(recurrent=True)
+        options = config.options()
+        prior_class = PRIORS[options.speaker_prior]
+        self.prior_emp = prior_class(recurrent=True)
+        self.prior_smooth = prior_class(recurrent=True)
 
         self.prior_emp.train(training_instances, listener_data=listener_data)
         self.prior_smooth.train(training_instances, listener_data=listener_data)
@@ -364,8 +395,7 @@ class SpeakerLearner(NeuralLearner):
         return masked_seq_crossentropy(input_vars[-1])
 
     def sample_prior_smooth(self, num_samples):
-        return [instance.Instance(input=c) for c in
-                self.prior_smooth.sample(num_samples)]
+        return self.prior_smooth.sample(num_samples)
 
 
 class ContextSpeakerLearner(SpeakerLearner):
@@ -520,8 +550,10 @@ class AtomicSpeakerLearner(NeuralLearner):
                                  loss=self.loss, optimizer=rmsprop, id=self.id)
 
     def train_priors(self, training_instances, listener_data=False):
-        self.prior_emp = UniformPrior()
-        self.prior_smooth = UniformPrior()
+        options = config.options()
+        prior_class = PRIORS[options.speaker_prior]
+        self.prior_emp = prior_class()
+        self.prior_smooth = prior_class()
 
         self.prior_emp.train(training_instances, listener_data=listener_data)
         self.prior_smooth.train(training_instances, listener_data=listener_data)
@@ -570,8 +602,7 @@ class AtomicSpeakerLearner(NeuralLearner):
         return l_out, color_inputs
 
     def sample_prior_smooth(self, num_samples):
-        return [instance.Instance(input=c) for c in
-                self.prior_smooth.sample(num_samples)]
+        return self.prior_smooth.sample(num_samples)
 
 
 SPEAKERS = {

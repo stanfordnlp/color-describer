@@ -6,17 +6,17 @@ from stanza.research import config
 from neural import SimpleLasagneModel, NeuralLearner
 from vectorizers import SequenceVectorizer, BucketsVectorizer
 from neural import OPTIMIZERS
-from listener import LISTENERS, PRIORS
-from speaker import SPEAKERS, UniformPrior
+from listener import LISTENERS, PRIORS as LISTENER_PRIORS
+from speaker import SPEAKERS, PRIORS as SPEAKER_PRIORS
 
 parser = config.get_options_parser()
 parser.add_argument('--rsa_listeners', type=int, default=1,
                     help='Number of listeners to use in RSA cooperative nets graph')
 parser.add_argument('--rsa_speakers', type=int, default=1,
                     help='Number of speakers to use in RSA cooperative nets graph')
-parser.add_argument('--listener_class', default='Listener', choices=LISTENERS.keys(),
+parser.add_argument('--listener_class', default=['Listener'], choices=LISTENERS.keys(), nargs='+',
                     help='The name of the listener model to use in the RSA network.')
-parser.add_argument('--speaker_class', default='Speaker', choices=SPEAKERS.keys(),
+parser.add_argument('--speaker_class', default=['Speaker'], choices=SPEAKERS.keys(), nargs='+',
                     help='The name of the speaker model to use in the RSA network.')
 parser.add_argument('--eval_agent', type=int, default=0,
                     help='Index of the agent (listener/speaker) to use as the primary object '
@@ -438,9 +438,18 @@ class RSALearner(NeuralLearner):
         options = config.options()
 
         id_tag = (id + '/') if id else ''
-        self.listeners = [LISTENERS[options.listener_class](id='%sL%d' % (id_tag, j))
+
+        listener_classes = options.listener_class
+        speaker_classes = options.speaker_class
+        if len(listener_classes) != options.rsa_listeners:
+            assert len(listener_classes) == 1, len(listener_classes)
+            listener_classes = listener_classes * options.rsa_listeners
+        if len(speaker_classes) != options.rsa_speakers:
+            assert len(speaker_classes) == 1, len(speaker_classes)
+            speaker_classes = speaker_classes * options.rsa_speakers
+        self.listeners = [LISTENERS[options.listener_class[j]](id='%sL%d' % (id_tag, j))
                           for j in range(options.rsa_listeners)]
-        self.speakers = [SPEAKERS[options.speaker_class](id='%sS%d' % (id_tag, k))
+        self.speakers = [SPEAKERS[options.speaker_class[k]](id='%sS%d' % (id_tag, k))
                          for k in range(options.rsa_speakers)]
 
         agents = self.listeners if options.listener else self.speakers
@@ -497,7 +506,9 @@ class RSALearner(NeuralLearner):
 
     def train_priors(self, training_instances, listener_data=False):
         options = config.options()
-        prior_class = PRIORS[options.listener_prior] if options.listener else UniformPrior
+        prior_class = (LISTENER_PRIORS[options.listener_prior]
+                       if options.listener else
+                       SPEAKER_PRIORS[options.speaker_prior])
         self.prior_emp = prior_class()
         self.prior_smooth = prior_class()
 
