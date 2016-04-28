@@ -447,9 +447,9 @@ class RSALearner(NeuralLearner):
         if len(speaker_classes) != options.rsa_speakers:
             assert len(speaker_classes) == 1, len(speaker_classes)
             speaker_classes = speaker_classes * options.rsa_speakers
-        self.listeners = [LISTENERS[options.listener_class[j]](id='%sL%d' % (id_tag, j))
+        self.listeners = [LISTENERS[listener_classes[j]](id='%sL%d' % (id_tag, j))
                           for j in range(options.rsa_listeners)]
-        self.speakers = [SPEAKERS[options.speaker_class[k]](id='%sS%d' % (id_tag, k))
+        self.speakers = [SPEAKERS[speaker_classes[k]](id='%sS%d' % (id_tag, k))
                          for k in range(options.rsa_speakers)]
 
         agents = self.listeners if options.listener else self.speakers
