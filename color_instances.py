@@ -62,7 +62,7 @@ def tune_train(listener=False):
     return all_train[:-100000]
 
 
-def tune_eval(listener=False):
+def tune_test(listener=False):
     all_train = get_training_instances(listener=listener)
     return all_train[-100000:]
 
@@ -145,7 +145,7 @@ def reference_game_train(gen_func):
 
 def reference_game_test(gen_func):
     def generate_refgame_test(listener=False):
-        return reference_game(get_training_instances(listener=listener),
+        return reference_game(get_dev_instances(listener=listener),
                               gen_func, listener=listener)
     return generate_refgame_test
 
@@ -195,7 +195,7 @@ DataSource = namedtuple('DataSource', ['train_data', 'test_data'])
 
 SOURCES = {
     'dev': DataSource(get_training_instances, get_dev_instances),
-    'tune': DataSource(tune_train, tune_eval),
+    'tune': DataSource(tune_train, tune_test),
     '2word': DataSource(two_word, two_word),
     '1word': DataSource(one_word, one_word),
     '0word': DataSource(empty_str, empty_str),
