@@ -244,11 +244,11 @@ class SpeakerLearner(NeuralLearner):
             if isinstance(color, numbers.Number):
                 color = get_color_indexed(inst)
             if test:
-                full = ['<s>'] + ['</s>'] * (self.seq_vec.max_len - 2)
+                full = ['<s>'] + ['</s>'] * (self.seq_vec.max_len - 1)
             else:
                 desc = desc.split()
                 full = (['<s>'] + desc + ['</s>'] +
-                        ['<MASK>'] * (self.seq_vec.max_len - 2 - len(desc)))
+                        ['<MASK>'] * (self.seq_vec.max_len - 1 - len(desc)))
             prev = full[:-1]
             next = full[1:]
             if options.verbosity >= 9:
