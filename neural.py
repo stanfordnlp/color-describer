@@ -404,5 +404,6 @@ class NeuralLearner(Learner):
              self.prior_emp, self.prior_smooth) = state
         self._build_model(model_class)
         params = self.params()
+        assert len(params) == len(params_state), '%d != %d' % (len(params), len(params_state))
         for p, value in zip(params, params_state):
             p.set_value(value)

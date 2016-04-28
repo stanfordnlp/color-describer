@@ -323,11 +323,12 @@ class SpeakerLearner(NeuralLearner):
         prev_output_var, mask_var = input_vars[-2:]
         color_input_vars = input_vars[:-2]
 
+        context_len = self.context_len if hasattr(self, 'context_len') else 1
         l_color_repr, color_inputs = self.color_vec.get_input_layer(
             color_input_vars,
             recurrent_length=self.seq_vec.max_len - 1,
             cell_size=options.speaker_cell_size,
-            context_len=self.context_len,
+            context_len=context_len,
             id=self.id
         )
         l_hidden_color = dimshuffle(l_color_repr, (0, 2, 1))
