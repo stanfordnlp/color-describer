@@ -58,6 +58,9 @@ parser.add_argument('--speaker_eval_batch_size', type=int, default=16384,
                     help='The number of examples per batch for evaluating the speaker '
                          'model. Higher means faster but more memory usage. This should '
                          'not affect modeling accuracy.')
+parser.add_argument('--speaker_beam_size', type=int, default=1,
+                    help='The number of choices to keep in memory at each time step '
+                         'during prediction. Only used for recurrent speakers.')
 parser.add_argument('--speaker_optimizer', choices=OPTIMIZERS.keys(), default='rmsprop',
                     help='The optimization (update) algorithm to use for speaker training.')
 parser.add_argument('--speaker_learning_rate', type=float, default=0.1,
@@ -156,6 +159,8 @@ class SpeakerLearner(NeuralLearner):
         batches = iterators.iter_batches(eval_instances, options.speaker_eval_batch_size)
         num_batches = (len(eval_instances) - 1) // options.speaker_eval_batch_size + 1
 
+        eos_index = self.seq_vec.vectorize(['</s>'])[0]
+
         if options.verbosity + verbosity >= 2:
             print('Predicting')
         progress.start_task('Predict batch', num_batches)
@@ -164,26 +169,36 @@ class SpeakerLearner(NeuralLearner):
             batch = list(batch)
 
             (c, _p, mask), (_y,) = self._data_to_arrays(batch, test=True)
+            assert mask.all()  # We shouldn't be masking anything in prediction
 
-            done = np.zeros((len(batch),), dtype=np.bool)
-            outputs = [['<s>'] + ['</s>'] * (self.seq_vec.max_len - 2)
-                       for _ in batch]
-            length = 0
-            while not done.all() and length < self.seq_vec.max_len - 1:
-                p = self.seq_vec.vectorize_all(outputs)
-                preds = self.model.predict([c, p, mask])
+            beam_size = 1 if random else options.speaker_beam_size
+            done = np.zeros((len(batch), beam_size), dtype=np.bool)
+            beam = np.zeros((len(batch), beam_size, self.seq_vec.max_len),
+                            dtype=np.int32)
+            beam[:, :, 0] = self.seq_vec.vectorize(['<s>'])[0]
+            beam_scores = np.log(np.zeros((len(batch), beam_size)))
+            beam_scores[:, 0] = 0.0
+
+            c = np.repeat(c, beam_size, axis=0)
+            mask = np.repeat(mask, beam_size, axis=0)
+
+            for length in range(1, self.seq_vec.max_len):
+                if done.all():
+                    break
+                p = beam.reshape((beam.shape[0] * beam.shape[1], beam.shape[2]))[:, :-1]
+                probs = self.model.predict([c, p, mask])
                 if random:
-                    indices = sample(preds[:, length, :])
+                    indices = sample(probs[:, length - 1, :])
+                    beam[:, 0, length] = indices
+                    done = np.logical_or(done, indices == eos_index)
                 else:
-                    indices = preds[:, length, :].argmax(axis=1)
-                for out, idx in zip(outputs, indices):
-                    token = self.seq_vec.indices_token[idx]
-                    if length + 1 < self.seq_vec.max_len - 1:
-                        out[length + 1] = token
-                    else:
-                        out.append(token)
-                done = np.logical_or(done, indices == self.seq_vec.token_indices['</s>'])
-                length += 1
+                    assert probs.shape[1] == p.shape[1], (probs.shape[1], p.shape[1])
+                    assert probs.shape[2] == len(self.seq_vec.tokens), (probs.shape[2],
+                                                                        len(self.seq_vec.tokens))
+                    scores = np.log(probs)[:, length - 1, :].reshape((beam.shape[0], beam.shape[1],
+                                                                      probs.shape[2]))
+                    beam_search_step(scores, length, beam, beam_scores, done, eos_index)
+            outputs = self.seq_vec.unvectorize_all(beam[:, 0, :])
             result.extend([' '.join(strip_invalid_tokens(o)) for o in outputs])
         progress.end_task()
 
@@ -457,6 +472,135 @@ def masked_seq_crossentropy(mask):
         return (crossentropy_categorical_1hot_nd(coding_dist, true_idx) * mask_float).sum(axis=1)
 
     return msxe_loss
+
+
+def beam_search_step(scores, length, beam, beam_scores, done, eos_index):
+    '''
+    Perform one step of beam search, given the matrix of probabilities
+    for each possible following token.
+
+    Modifies `beam`, `beam_scores`, and `done` *in place*.
+
+    :param scores: Scores (log probabilities, up to a constant) assigned by the
+        model to each token for each sequence on the various beams.
+    :type scores: float ndarray, shape `(batch_size, beam_size, vocab_size)`
+    :param int length: Current length of already predicted sequences.
+        Should equal the axis-1 index in `beam` where the next
+        predicted tokens will be populated.
+    :param beam: Token indices for the top-k sequences predicted for each
+        example.
+    :type beam: int ndarray, shape `(batch_size, beam_size, max_seq_len)`
+    :param beam_scores: log probabilities assigned to current candidate sequences
+    :type beam_scores: float ndarray, shape `(batch_size, beam_size)`
+    :param done: Mask of beam entries that have reached the &lt;/s&gt; token
+    :type done: boolean ndarray, shape `(batch_size, beam_size)`
+
+    As an example, suppose the distribution represented by the model is:
+
+        'a cat': 0.375,
+        'cat': 0.25,
+        'cat a': 0.125,
+        'cat cat': 0.125,
+        'a': 0.0625,
+        '': 0.03125,
+        'a a': 0.03125,
+
+    >>> a_cat,   cat, cat_a, cat_cat,    a,    null,     a_a = \\
+    ... [0.375, 0.25, 0.125, 0.125, 0.0625, 0.03125, 0.03125]
+
+    >>> vec = SequenceVectorizer(); vec.add(['<s>', 'a', 'cat', '</s>'])
+    >>> vec.vectorize(['<s>', 'a', 'cat', '</s>'])
+    array([1, 2, 3, 4], dtype=int32)
+    >>> eos_index = vec.vectorize(['</s>'])[0]
+
+    Initialize the beam. Note that -inf should be the initial score
+    for all but one item on each beam; if all scores start at 0,
+    the beam will be saturated with duplicates of the greedy choice.
+
+    >>> batch_size = 1; beam_size = 2; max_seq_len = 3
+    >>> beam = np.zeros((batch_size, beam_size, max_seq_len), dtype=np.int)
+    >>> beam_scores = np.log(np.zeros((batch_size, beam_size)))
+    >>> beam_scores[:, 0] = 0.0
+    >>> done = np.zeros((batch_size, beam_size), dtype=np.bool)
+
+    >>> next_scores = np.log([[[0.0, 0.0,
+    ...                         a_cat + a + a_a,
+    ...                         cat + cat_cat + cat_a,
+    ...                         null]] * 2])
+    >>> beam_search_step(next_scores, 0, beam, beam_scores, done, eos_index)
+    >>> beam
+    array([[[3, 0, 0],
+            [2, 0, 0]]])
+    >>> np.exp(beam_scores).round(5)
+    array([[ 0.5    ,  0.46875]])
+    >>> done
+    array([[False, False]], dtype=bool)
+
+    Note that 'cat' is the greedy first choice, but 'a cat' will end up
+    with a higher score.
+
+    >>> next_scores = np.log([[[0.0, 0.0, cat_a / 0.5, cat_cat / 0.5, cat / 0.5],
+    ...                        [0.0, 0.0, a_a / 0.46875, a_cat / 0.46875, a / 0.46875]]])
+    >>> beam_search_step(next_scores, 1, beam, beam_scores, done, eos_index)
+    >>> beam
+    array([[[2, 3, 0],
+            [3, 4, 0]]])
+    >>> np.exp(beam_scores).round(3)
+    array([[ 0.375,  0.25 ]])
+    >>> done
+    array([[False,  True]], dtype=bool)
+
+    The best sequences have been identified; the score for 'cat' stays constant
+    after it reaches the end-of-sentence token, and the beam is padded with
+    end-of-sentence tokens regardless of the returned scores.
+
+    >>> next_scores = np.log([[[0.0, 0.0, 0.0, 0.0, 1.0],
+    ...                        [0.0, 0.0, 0.25, 0.5, 0.25]]])
+    >>> beam_search_step(next_scores, 2, beam, beam_scores, done, eos_index)
+    >>> beam
+    array([[[2, 3, 4],
+            [3, 4, 4]]])
+    >>> np.exp(beam_scores).round(3)
+    array([[ 0.375,  0.25 ]])
+    >>> done
+    array([[ True,  True]], dtype=bool)
+    '''
+    assert len(scores.shape) == 3, scores.shape
+    batch_size, beam_size, vocab_size = scores.shape
+    assert len(beam.shape) == 3, beam.shape
+    assert beam.shape[:2] == (batch_size, beam_size), \
+        '%s != (%s, %s, *)' % (beam.shape, batch_size, beam_size)
+    max_seq_len = beam.shape[2]
+    assert beam_scores.shape == (batch_size, beam_size), \
+        '%s != %s' % (beam_scores.shape, (batch_size, beam_size))
+    assert done.shape == (batch_size, beam_size), \
+        '%s != %s' % (done.shape, (batch_size, beam_size))
+
+    # Compute updated scores
+    new_scores = (scores * ~done[:, :, np.newaxis] +
+                  beam_scores[:, :, np.newaxis]).reshape((batch_size, beam_size * vocab_size))
+    # Get indices of top k scores
+    topk = np.argsort(-new_scores)[:, :beam_size]
+    # Transform into previous beam indices and new token indices
+    rows, new_indices = np.unravel_index(topk, (beam_size, vocab_size))
+    assert rows.shape == (batch_size, beam_size), \
+        '%s != %s' % (rows.shape, (batch_size, beam_size))
+    assert new_indices.shape == (batch_size, beam_size), \
+        '%s != %s' % (new_indices.shape, (batch_size, beam_size))
+
+    # Extract best pre-existing rows
+    beam[:, :, :] = beam[np.arange(batch_size)[:, np.newaxis], rows, :]
+    assert beam.shape == (batch_size, beam_size, max_seq_len), \
+        '%s != %s' % (beam.shape, (batch_size, beam_size, max_seq_len))
+    # Append new token indices
+    beam[:, :, length] = new_indices
+    # Update beam scores
+    beam_scores[:, :] = new_scores[np.arange(batch_size)[:, np.newaxis], topk]
+    # Get previous done status and update it with
+    # which rows have newly reached </s>
+    done[:, :] = done[np.arange(batch_size)[:, np.newaxis], rows] | (new_indices == eos_index)
+    # Pad already-finished sequences with </s>
+    beam[done, length] = eos_index
 
 
 class AtomicSpeakerLearner(NeuralLearner):
