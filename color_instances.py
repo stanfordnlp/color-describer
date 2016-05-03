@@ -76,6 +76,15 @@ def pairs_to_insts(data, listener=False):
     ]
 
 
+def triples_to_insts(data, listener=False):
+    return [
+        (Instance(input=name, output=color, alt_outputs=context)
+         if listener else
+         Instance(input=color, alt_inputs=context, output=name))
+        for name, color, context in data
+    ]
+
+
 def empty_str(listener=False):
     data = [('', (167.74193548404, 96.3730569948, 75.6862745098))]
     return pairs_to_insts(data, listener=listener)
@@ -134,6 +143,58 @@ def scalar_imp_level2_test(listener=False):
         ('yellow', (80., 100., 100.)),
     ]
     return pairs_to_insts(data, listener=listener)
+
+
+def amsterdam_literal_train(listener=False):
+    data = [
+        ('light purple', 0, [(260., 45., 100.), (260., 100., 100.)]),
+        ('purple', 0, [(260., 45., 100.), (260., 100., 100.)]),
+        ('light', 0, [(260., 45., 100.), (260., 100., 100.)]),
+        ('', 0, [(260., 45., 100.), (260., 100., 100.)]),
+        ('light purple', 1, [(260., 100., 100.), (260., 45., 100.)]),
+        ('purple', 1, [(260., 100., 100.), (260., 45., 100.)]),
+        ('light', 1, [(260., 100., 100.), (260., 45., 100.)]),
+        ('', 1, [(260., 100., 100.), (260., 45., 100.)]),
+        ('pinkish purple', 1, [(260., 100., 100.), (300., 100., 100.)]),
+        ('purple', 1, [(260., 100., 100.), (300., 100., 100.)]),
+        ('pinkish', 1, [(260., 100., 100.), (300., 100., 100.)]),
+        ('', 1, [(260., 100., 100.), (300., 100., 100.)]),
+        ('pinkish purple', 0, [(300., 100., 100.), (260., 100., 100.)]),
+        ('purple', 0, [(300., 100., 100.), (260., 100., 100.)]),
+        ('pinkish', 0, [(300., 100., 100.), (260., 100., 100.)]),
+        ('', 0, [(300., 100., 100.), (260., 100., 100.)]),
+    ]
+    return triples_to_insts(data, listener=listener)
+
+
+def amsterdam_typical_train(listener=False):
+    data = [
+        ('light purple', 0, [(260., 45., 100.), (260., 100., 100.)]),
+        ('purple', 0, [(260., 45., 100.), (260., 100., 100.)]),
+        ('light purple', 1, [(260., 100., 100.), (260., 45., 100.)]),
+        ('purple', 1, [(260., 100., 100.), (260., 45., 100.)]),
+        ('pinkish purple', 1, [(260., 100., 100.), (300., 100., 100.)]),
+        ('purple', 1, [(260., 100., 100.), (300., 100., 100.)]),
+        ('pinkish', 1, [(260., 100., 100.), (300., 100., 100.)]),
+        ('pinkish purple', 0, [(300., 100., 100.), (260., 100., 100.)]),
+        ('purple', 0, [(300., 100., 100.), (260., 100., 100.)]),
+        ('pinkish', 0, [(300., 100., 100.), (260., 100., 100.)]),
+    ]
+    return triples_to_insts(data, listener=listener)
+
+
+def amsterdam_test(listener=False):
+    data = [
+        ('', 0, [(300., 45., 100.), (300., 100., 100.)]),
+        ('light', 0, [(300., 45., 100.), (300., 100., 100.)]),
+        ('pinkish', 0, [(300., 45., 100.), (300., 100., 100.)]),
+        ('purple', 0, [(300., 45., 100.), (300., 100., 100.)]),
+        ('light purple', 0, [(300., 45., 100.), (300., 100., 100.)]),
+        ('pinkish purple', 0, [(300., 45., 100.), (300., 100., 100.)]),
+        ('light pinkish', 0, [(300., 45., 100.), (300., 100., 100.)]),
+        ('light pinkish purple', 0, [(300., 45., 100.), (300., 100., 100.)]),
+    ]
+    return triples_to_insts(data, listener=listener)
 
 
 def reference_game_train(gen_func):
@@ -204,4 +265,6 @@ SOURCES = {
     'ref_uni': DataSource(reference_game_train(uniform), reference_game_test(uniform)),
     'ref_linrgb': DataSource(reference_game_train(linear_rgb), reference_game_test(linear_rgb)),
     'ref_linhsv': DataSource(reference_game_train(linear_hsv), reference_game_test(linear_hsv)),
+    'ams_literal': DataSource(amsterdam_literal_train, amsterdam_test),
+    'ams_typical': DataSource(amsterdam_typical_train, amsterdam_test),
 }
