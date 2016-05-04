@@ -5,16 +5,29 @@ set -o errexit
 # Download LUX (http://mcmahan.io/lux)
 # Includes Munroe color corpus with train/dev/test split
 if [ ! -e rugstk ]; then
-  echo 'Downloading LUX...'
-  wget http://paul.rutgers.edu/~bcm84/rugstk_v1.0.tar.gz
-  echo 'Extracting...'
-  tar xzf rugstk_v1.0.tar.gz
-  mv rugstk_v1 rugstk
-  rm rugstk_v1.0.tar.gz
+    echo 'Downloading LUX...'
+    wget http://paul.rutgers.edu/~bcm84/rugstk_v1.0.tar.gz
+    echo 'Extracting...'
+    tar xzf rugstk_v1.0.tar.gz
+    mv rugstk_v1 rugstk
+    rm rugstk_v1.0.tar.gz
+fi
+
+# Download TUNA REG corpus (http://www.abdn.ac.uk/ncs/departments/computing-science/corpus-496.php)
+if [ ! -e tuna ]; then
+    echo 'Downloading TUNA...'
+    wget http://www.abdn.ac.uk/ncs/documents/corpus.zip
+    echo 'Extracting...'
+    unzip corpus.zip
+    mv dist tuna
+    rm corpus.zip
+# tar xzf REG08_TUNA_DATA_2008-03-10.tar.gz REG08_TUNA-AS_TEST-DATA_FULL.tar.gz
+# mv REG08_TUNA_DATA_2008-03-10/* tuna/
+# mv REG08_TUNA-AS_TEST-DATA_FULL tuna/test
 fi
 
 echo 'Installing Python module dependencies...'
-pip install ConfigArgParse pyhocon pypng 'Protobuf>=3.0.0b2' pydot graphviz
+pip install ConfigArgParse pyhocon pypng 'Protobuf>=3.0.0b2' pydot graphviz scikit-learn
 
 if [ ! -e tensorflow ]; then
     echo 'Checking for tensorboard protos...'
