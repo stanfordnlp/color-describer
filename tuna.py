@@ -2,6 +2,7 @@
 
 import re
 from glob import iglob
+from itertools import groupby
 import xml.etree.ElementTree as ET
 from tokenizers import basic_unigram_tokenizer
 
@@ -10,28 +11,61 @@ import subprocess
 
 class TunaCorpus:
     def __init__(self, filenames):
-        self.filenames = filenames
+        self.filenames = list(filenames)
 
     def iter_trials(self):
-        for filename in self.filenames:
-            yield Trial(filename)
+        for group in group_references(self.filenames):
+            yield Trial(group)
+
+
+def group_references(filenames):
+    '''
+    >>> list(group_references(['a-0.xml', 'a-1.xml', 'b-0.xml', 'b-1.xml']))
+    [['a-0.xml', 'a-1.xml'], ['b-0.xml', 'b-1.xml']]
+    '''
+    filenames = sorted(filenames)
+    for _, group in groupby(filenames, trial_id):
+        yield group
+
+
+def trial_id(filename):
+    '''
+    >>> trial_id('1a2.xml')
+    '1a2'
+    >>> trial_id('people/1a3-0.xml')
+    'people/1a3'
+    >>> trial_id('1a4-0-6.txt')
+    '1a4-0'
+    >>> trial_id('plural.people.5.8.json')
+    'plural.people.5.8'
+    '''
+    extension = filename.rfind('.')
+    if extension != -1:
+        filename = filename[:extension]
+    hyphen = filename.rfind('-')
+    if hyphen == -1 or not filename[hyphen + 1:].isdigit():
+        return filename
+    else:
+        return filename[:hyphen]
 
 
 class Trial:
-    def __init__(self, filename):
-        self.filename = filename
-        tree = ET.parse(self.filename)
-        root = tree.getroot()
+    def __init__(self, filenames):
+        self.filenames = filenames
+        trees = [ET.parse(filename).getroot() for filename in filenames]
         # General trial-level attributes: cardinality, condition, domain, id
-        for key, val in root.attrib.items():
+        for key, val in trees[0].attrib.items():
             try:
                 val = int(val)
             except:
                 pass
             setattr(self, key.lower(), val)
         # The set of entities in the <DOMAIN> element (there is always exactly 1):
-        self.entities = [Entity(e) for e in root[0].iter('ENTITY')]
+        self.entities = [Entity(e) for e in trees[0][0].iter('ENTITY')]
         self.targets = [e for e in self.entities if e.is_target()]
+        self.descriptions = [self.build_description(root) for root in trees]
+
+    def build_description(self, root):
         # <STRING-DESCRIPTION> is always unique and the the 2nd daughter of the root:
         string_description_elem = root[1]
         # <DESCRIPTION> is always unique and the the 3rd daughter of the root:
@@ -40,8 +74,7 @@ class Trial:
         attribute_set_elem = root[3]
         # More work needs to be done on descriptions if we want to use them beyond
         # string_description. For now, only string_description is fully configured.
-        self.description = Description(string_description_elem, description_elem,
-                                       attribute_set_elem)
+        return Description(string_description_elem, description_elem, attribute_set_elem)
 
     def to_latex(self,
                  output_filename="temp.tex",
