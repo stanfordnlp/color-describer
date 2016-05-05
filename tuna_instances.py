@@ -28,7 +28,7 @@ def get_tuna_insts(files_glob, cv_folds):
         filenames = glob(files_glob)
         if not filenames:
             raise IOError('Could not find any TUNA trials in "%s"' % files_glob)
-        corpus = TunaCorpus(filenames)
+        corpus = TunaCorpus(filenames, random_state=rng)
         trials = list(corpus.iter_trials())
         splits = list(KFold(n=len(trials), n_folds=cv_folds, shuffle=True, random_state=rng))
         _trials_map[files_glob, cv_folds] = trials, splits

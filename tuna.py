@@ -10,12 +10,17 @@ import subprocess
 
 
 class TunaCorpus:
-    def __init__(self, filenames):
+    def __init__(self, filenames, random_state=None):
         self.filenames = list(filenames)
+        if random_state is None:
+            import random
+            self.random_state = random
+        else:
+            self.random_state = random_state
 
     def iter_trials(self):
         for group in group_references(self.filenames):
-            yield Trial(group)
+            yield Trial(group, random_state=self.random_state)
 
 
 def group_references(filenames):
@@ -50,7 +55,11 @@ def trial_id(filename):
 
 
 class Trial:
-    def __init__(self, filenames):
+    def __init__(self, filenames, random_state=None):
+        if random_state is None:
+            import random
+            random_state = random
+
         self.filenames = filenames
         trees = [ET.parse(filename).getroot() for filename in filenames]
         # General trial-level attributes: cardinality, condition, domain, id
@@ -62,6 +71,7 @@ class Trial:
             setattr(self, key.lower(), val)
         # The set of entities in the <DOMAIN> element (there is always exactly 1):
         self.entities = [Entity(e) for e in trees[0][0].iter('ENTITY')]
+        random_state.shuffle(self.entities)
         self.targets = [e for e in self.entities if e.is_target()]
         self.descriptions = [self.build_description(root) for root in trees]
 
