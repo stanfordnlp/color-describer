@@ -7,6 +7,7 @@ from tokenizers import basic_unigram_tokenizer
 
 import subprocess
 
+
 class TunaCorpus:
     def __init__(self, filenames):
         self.filenames = filenames
@@ -39,13 +40,14 @@ class Trial:
         attribute_set_elem = root[3]
         # More work needs to be done on descriptions if we want to use them beyond
         # string_description. For now, only string_description is fully configured.
-        self.description = Description(string_description_elem, description_elem, attribute_set_elem)
+        self.description = Description(string_description_elem, description_elem,
+                                       attribute_set_elem)
 
     def to_latex(self,
-            output_filename="temp.tex",
-            output_dirname=".",
-            img_dirname="/Volumes/CHRIS/Documents/research/languagebots/TUNA/corpus/singular/furniture",
-            self_contained=True):
+                 output_filename="temp.tex",
+                 output_dirname=".",
+                 img_dirname="TUNA/corpus/singular/furniture",
+                 self_contained=True):
         xmax = self.xmax()
         ymax = self.ymax()
         # Framework for tabular environment:
@@ -54,17 +56,17 @@ class Trial:
             # Covert the GIF to PNG, since pdflatex can't handle GIF:
             img_path = "%s/%s" % (img_dirname, e.image)
             png = "%s/%s" % (output_dirname, e.image.replace(".gif", ".png"))
-            output = subprocess.Popen(["convert", img_path, png])
+            subprocess.Popen(["convert", img_path, png])
             # The cell has the image on left and uses a tabular environment to
             # list the attributes on the right:
             cell = ""
             cell += "\\parbox[c]{1.6cm}{\\includegraphics[scale=0.1]{%s}}\n" % png
-            cell += "\\begin{tabular}{@{} c @{}}"            
+            cell += "\\begin{tabular}{@{} c @{}}"
             x = None
             y = None
             attrs = e.attributes_as_dict()
             x = int(attrs['x-dimension'])-1
-            y = int(attrs['y-dimension'])-1                                   
+            y = int(attrs['y-dimension'])-1
             attr_strs = ["%s:%s" % key_val for key_val in sorted(attrs.items())]
             cell += "\\\\\n".join(attr_strs)
             cell += "\\end{tabular}"
@@ -73,7 +75,7 @@ class Trial:
                 cell = "\colorbox{lightgray}{%s}" % cell
             else:
                 cell = "\\framebox{%s}" % cell
-            table[x][y] = cell        
+            table[x][y] = cell
         # Format the cells as a table:
         tab = "\\begin{tabular}[c]{@{} *{%s}{c} @{}}\n" % ymax
         rows = [" & ".join(row) for row in table]
@@ -84,13 +86,18 @@ class Trial:
         # Format the utterance as a table:
         utt = "\\begin{tabular}{r l}"
         utt += "Utterance: &" + self.description.string_description + "\\\\\n"
-        utt += " &  " + "; ".join(["%s:%s" % key_val for key_val in sorted(self.description.attributes_as_dict().items())])
+        utt += " &  " + "; ".join([
+            "%s:%s" % key_val
+            for key_val in sorted(self.description.attributes_as_dict().items())
+        ])
         utt += "\\end{tabular}"
         # The core content:
         s = tab + "\n\n" + utt
         # For a free-standing latexable file:
         if self_contained:
-            s = r"\documentclass{article}\usepackage{colortbl}\usepackage{graphicx}\usepackage[usenames]{xcolor}\begin{document}\newcommand{\graycell}[1]{{\cellcolor[gray]{.8}#1}}\scriptsize" + s + r"\end{document}"
+            s = r"\documentclass{article}\usepackage{colortbl}\usepackage{graphicx}" \
+                r"\usepackage[usenames]{xcolor}\begin{document}\newcommand{\graycell}[1]" \
+                r"{{\cellcolor[gray]{.8}#1}}\scriptsize" + s + r"\end{document}"
         # Output:
         if output_filename:
             open(output_filename, 'w').write(s)
@@ -106,16 +113,16 @@ class Trial:
 
     def xmax(self, dim='x'):
         return self.dimmax(dim='x')
-    
+
     def ymax(self, dim='y'):
         return self.dimmax(dim='y')
-    
+
 ######################################################################
-            
+
 
 class Entity:
     def __init__(self, element):
-         # General entity-level attributes: id, image, type
+        # General entity-level attributes: id, image, type
         for key, val in element.attrib.items():
             try:
                 val = int(val)
@@ -134,7 +141,7 @@ class Entity:
         """Defines equality in terms of equality of attributes"""
         if len(self.attributes) != len(e.attributes):
             return False
-        return not False in [aself == a for aself, a in zip(self.attributes, e.attributes)]
+        return False not in [aself == a for aself, a in zip(self.attributes, e.attributes)]
 
     def __ne__(self, e):
         return not self.__eq__(e)
@@ -144,6 +151,7 @@ class Entity:
             if x == a:
                 return True
         return False
+
 
 class Description:
     def __init__(self, string_description_elem, description_elem, attribute_set_elem):
@@ -168,7 +176,7 @@ class Attribute:
         return ":".join([x for x in [self.name, self.value] if x])
 
     def __eq__(self, a):
-        return (self.type==a.type) and (self.name==a.name) and (self.value==a.value)
+        return (self.type == a.type) and (self.name == a.name) and (self.value == a.value)
 
     def __ne__(self, a):
         return not self.__eq__(a)
@@ -184,8 +192,7 @@ if __name__ == '__main__':
 
     from collections import Counter
     from operator import itemgetter
-    
-    
+
     def stats():
         all_filenames = iglob("../TUNA/corpus/*/*/*.xml")
         corpus = TunaCorpus(all_filenames)
@@ -196,8 +203,8 @@ if __name__ == '__main__':
         print 'Vocab size:', len(counts)
         print 'Tokens:', sum(counts.values())
 
-
-    import random, glob    
+    import random
+    import glob
 
     def find_display_candidates():
         filenames = glob.glob("../TUNA/corpus/singular/furniture/*.xml")
@@ -215,13 +222,12 @@ if __name__ == '__main__':
                     break
             if xvals and yvals:
                 xmax = max(xvals)
-                ymax = max(yvals)            
+                ymax = max(yvals)
                 if xmax <= 3 and ymax <= 5:
                     trial.to_latex()
                     break
 
-    #find_display_candidates()
+    # find_display_candidates()
 
     # Example currently used in the paper:
     Trial("../TUNA/corpus/singular/furniture/s40t4.xml").to_latex()
-    
