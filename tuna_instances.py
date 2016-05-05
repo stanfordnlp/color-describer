@@ -38,10 +38,11 @@ def get_tuna_insts(files_glob, cv_folds):
 def trials_to_insts(trials, listener=False):
     insts = []
     for trial in trials:
-        desc = [d.string_description for d in trial.descriptions]
-        desc_attrs = [sorted(set([str(a) for a in d.attribute_set])) for d in trial.descriptions]
-        targets = [i for i, e in enumerate(trial.entities) if e.is_target()]
-        alt_referents = [[str(a) for a in e.attributes] for e in trial.entities]
+        desc = tuple(d.string_description for d in trial.descriptions)
+        desc_attrs = tuple(tuple(sorted(set([str(a) for a in d.attribute_set])))
+                           for d in trial.descriptions)
+        targets = tuple(i for i, e in enumerate(trial.entities) if e.is_target())
+        alt_referents = tuple(tuple(str(a) for a in e.attributes) for e in trial.entities)
         if listener:
             insts.append(Instance(input=desc, annotated_input=desc_attrs,
                                   output=targets, alt_outputs=alt_referents,
