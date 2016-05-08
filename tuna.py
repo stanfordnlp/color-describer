@@ -25,8 +25,10 @@ class TunaCorpus:
 
 def group_references(filenames):
     '''
-    >>> list(group_references(['a-0.xml', 'a-1.xml', 'b-0.xml', 'b-1.xml']))
-    [['a-0.xml', 'a-1.xml'], ['b-0.xml', 'b-1.xml']]
+    >>> for group in group_references(['a-0.xml', 'a-1.xml', 'b-0.xml', 'b-1.xml']):
+    ...     print list(group)
+    ['a-0.xml', 'a-1.xml']
+    ['b-0.xml', 'b-1.xml']
     '''
     filenames = sorted(filenames)
     for _, group in groupby(filenames, trial_id):
