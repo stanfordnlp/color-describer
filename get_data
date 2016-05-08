@@ -8,10 +8,9 @@ if [[ "$#" != "1" ]]; then
 fi
 
 run_dir="$1"
-cd "$run_dir"
 
-l_data="$(echo ../data_l/data.*.jsons)"
-s_data="$(echo ../data_s/data.*.jsons)"
+l_data="$(echo runs/data_l/data.*.jsons)"
+s_data="$(echo runs/data_s/data.*.jsons)"
 
 if [[ $(grep '"listener": true,' config.json) ]]; then
   data="$l_data"
@@ -21,5 +20,5 @@ fi
 
 for data_path in $data; do
   filename="$(basename "$data_path")"
-  ln -s "$data_path" "$filename"
+  ln -s --relative "$data_path" "$run_dir"/"$filename"
 done
