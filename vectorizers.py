@@ -2,6 +2,7 @@ import colorsys
 import numpy as np
 import operator
 import theano.tensor as T
+import skimage.color
 from collections import Sequence
 from lasagne.layers import InputLayer, EmbeddingLayer, reshape
 from matplotlib.colors import hsv_to_rgb
@@ -620,34 +621,52 @@ class FourierVectorizer(ColorVectorizer):
         array([ 1., -1., -1.,  1., -1.,  1.,  1., -1.,  0.,  0.,  0.,  0.,  0.,
                 0.,  0.,  0.], dtype=float32)
         '''
+        return self.vectorize_all([color], hsv=hsv)[0]
+
+    def vectorize_all(self, colors, hsv=None):
+        '''
+        >>> normalize = lambda v: np.where(v.round(2) == 0.0, 0.0, v.round(2))
+        >>> normalize(FourierVectorizer([2]).vectorize_all([(255, 0, 0), (0, 255, 255)]))
+        array([[ 1.,  1.,  1.,  1., -1., -1., -1., -1.,  0.,  0.,  0.,  0.,  0.,
+                 0.,  0.,  0.],
+               [ 1., -1., -1.,  1.,  1., -1., -1.,  1.,  0.,  0.,  0.,  0.,  0.,
+                 0.,  0.,  0.]], dtype=float32)
+        '''
         if hsv is None:
             hsv = self.hsv
 
-        ranges = RANGES_HSV if self.hsv else RANGES_RGB
+        colors = np.array([colors])
+        assert len(colors.shape) == 3, colors.shape
+        assert colors.shape[2] == 3, colors.shape
+
+        ranges = np.array(RANGES_HSV if self.hsv else RANGES_RGB)
         if hsv and not self.hsv:
-            c_hsv = color
-            color_0_1 = colorsys.hsv_to_rgb(*(d / (r - 1.0) for d, r in zip(c_hsv, RANGES_HSV)))
+            c_hsv = colors
+            color_0_1 = skimage.color.hsv2rgb(c_hsv / (np.array(RANGES_HSV) - 1.0))
         elif not hsv and self.hsv:
-            c_rgb = color
-            color_0_1 = colorsys.rgb_to_hsv(*(d / (r - 1.0) for d, r in zip(c_rgb, RANGES_RGB)))
+            c_rgb = colors
+            color_0_1 = skimage.color.rgb2hsv(c_rgb / (np.array(RANGES_RGB) - 1.0))
         else:
-            color_0_1 = tuple(d / (r - 1.0) for d, r in zip(color, ranges))
+            color_0_1 = colors / (ranges - 1.0)
 
         # Using a Fourier representation causes colors at the boundary of the
         # space to behave as if the space is toroidal: red = 255 would be
         # about the same as red = 0. We don't want this...
-        x, y, z = tuple(d / 2.0 for d in color_0_1)
+        xyz = color_0_1[0] / 2.0
         if self.hsv:
             # ...*except* in the case of HSV: H is in fact a polar coordinate.
-            x *= 2.0
+            xyz[:, 0] *= 2.0
 
         # ax, ay, az = [np.hstack([np.arange(0, g / 2), np.arange(r - g / 2, r)])
         #               for g, r in zip(self.resolution, ranges)]
         ax, ay, az = [np.arange(0, g) for g, r in zip(self.resolution, ranges)]
         gx, gy, gz = np.meshgrid(ax, ay, az)
 
-        repr_complex = np.exp(-2j * np.pi *
-                              ((x * gx + y * gy + z * gz) % 1.0)).swapaxes(0, 1).flatten()
+        arg = (np.multiply.outer(xyz[:, 0], gx) +
+               np.multiply.outer(xyz[:, 1], gy) +
+               np.multiply.outer(xyz[:, 2], gz))
+        assert arg.shape == (xyz.shape[0],) + tuple(self.resolution), arg.shape
+        repr_complex = np.exp(-2j * np.pi * (arg % 1.0)).swapaxes(1, 2).reshape((xyz.shape[0], -1))
         result = np.hstack([repr_complex.real, repr_complex.imag]).astype(np.float32)
         return result
 
