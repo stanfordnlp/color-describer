@@ -257,27 +257,35 @@ class BucketsVectorizer(ColorVectorizer):
         ... # RGB (0, 255, 0) = HSV (120, 100, 100)
         3
         '''
+        return self.vectorize_all([color], hsv=hsv)[0]
+
+    def vectorize_all(self, colors, hsv=None):
+        '''
+        >>> BucketsVectorizer((2, 2, 2)).vectorize_all([(0, 0, 0), (255, 0, 0)])
+        array([0, 4], dtype=int32)
+        '''
         if hsv is None:
             hsv = self.hsv
 
+        colors = np.array([colors])
         if hsv and not self.hsv:
-            c_hsv = color
-            c_rgb_0_1 = colorsys.hsv_to_rgb(*(d * 1.0 / r for d, r in zip(c_hsv, RANGES_HSV)))
-            color_internal = tuple(int(d * 255.99) for d in c_rgb_0_1)
+            c_hsv = colors
+            c_rgb_0_1 = skimage.color.hsv2rgb(c_hsv * 1.0 / np.array(RANGES_HSV))[0]
+            colors_internal = c_rgb_0_1 * (np.array(RANGES_RGB) - C_EPSILON)
         elif not hsv and self.hsv:
-            c_rgb = color
-            c_hsv_0_1 = colorsys.rgb_to_hsv(*(d / 256.0 for d in c_rgb))
-            color_internal = tuple(int(d * (r - C_EPSILON)) for d, r in zip(c_hsv_0_1, RANGES_HSV))
+            c_rgb = colors
+            c_hsv_0_1 = skimage.color.rgb2hsv(c_rgb * 1.0 / np.array(RANGES_RGB))[0]
+            colors_internal = c_hsv_0_1 * (np.array(RANGES_HSV) - C_EPSILON)
         else:
-            ranges = RANGES_HSV if self.hsv else RANGES_RGB
-            color_internal = tuple(min(d, r - C_EPSILON) for d, r in zip(color, ranges))
+            ranges = np.array(RANGES_HSV if self.hsv else RANGES_RGB)
+            colors_internal = np.minimum(colors[0], ranges - C_EPSILON)
 
-        bucket_dims = [int(e // r) for e, r in zip(color_internal, self.bucket_sizes)]
-        result = (bucket_dims[0] * self.resolution[1] * self.resolution[2] +
-                  bucket_dims[1] * self.resolution[2] +
-                  bucket_dims[2])
-        assert (0 <= result < self.num_types), (color, result)
-        return np.int32(result)
+        bucket_dims = (colors_internal // np.array(self.bucket_sizes)).astype(np.int32)
+        result = (bucket_dims[..., 0] * self.resolution[1] * self.resolution[2] +
+                  bucket_dims[..., 1] * self.resolution[2] +
+                  bucket_dims[..., 2])
+        assert (0 <= result).all() and (result < self.num_types).all(), (colors, result)
+        return result.astype(np.int32)
 
     def unvectorize(self, bucket, random=False, hsv=None):
         '''
