@@ -46,11 +46,11 @@ def trials_to_insts(trials, listener=False):
         if listener:
             insts.append(Instance(input=desc, annotated_input=desc_attrs,
                                   output=targets, alt_outputs=alt_referents,
-                                  source=trial))
+                                  source=trial.filenames))
         else:
             insts.append(Instance(input=targets, alt_inputs=alt_referents,
                                   output=desc, annotated_output=desc_attrs,
-                                  source=trial))
+                                  source=trial.filenames))
     return insts
 
 

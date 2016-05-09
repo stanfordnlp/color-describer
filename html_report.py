@@ -253,7 +253,7 @@ def format_error_analysis(output, compare=None):
 
 
 def format_value(value):
-    if isinstance(value, list):
+    if isinstance(value, list) and len(value) == 3 and isinstance(value[0], Number):
         color = web_color(value)
         value = [int(c) for c in value]
     else:

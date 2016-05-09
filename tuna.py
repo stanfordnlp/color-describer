@@ -62,8 +62,8 @@ class Trial:
             import random
             random_state = random
 
-        self.filenames = filenames
-        trees = [ET.parse(filename).getroot() for filename in filenames]
+        self.filenames = list(filenames)
+        trees = [ET.parse(filename).getroot() for filename in self.filenames]
         # General trial-level attributes: cardinality, condition, domain, id
         for key, val in trees[0].attrib.items():
             try:
