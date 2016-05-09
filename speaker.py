@@ -1,4 +1,3 @@
-import numbers
 import numpy as np
 import theano.tensor as T
 import warnings
@@ -237,10 +236,18 @@ class SpeakerLearner(NeuralLearner):
 
         use_context = hasattr(self, 'context_len') and self.context_len > 1
 
+        def get_multi(val):
+            if isinstance(val, tuple):
+                assert len(val) == 1
+                return val[0]
+            else:
+                return val
+
         get_i, get_o = (lambda inst: inst.input), (lambda inst: inst.output)
-        get_color, get_desc = (get_o, get_i) if inverted else (get_i, get_o)
-        get_i_ind, get_o_ind = ((lambda inst: inst.alt_inputs[inst.input]),
-                                (lambda inst: inst.alt_outputs[inst.output]))
+        get_color, get_desc_simple = (get_o, get_i) if inverted else (get_i, get_o)
+        get_desc = lambda inst: get_multi(get_desc_simple(inst))
+        get_i_ind, get_o_ind = ((lambda inst: inst.alt_inputs[get_multi(inst.input)]),
+                                (lambda inst: inst.alt_outputs[get_multi(inst.output)]))
         get_color_indexed = get_o_ind if inverted else get_i_ind
         get_alt_i, get_alt_o = (lambda inst: inst.alt_inputs), (lambda inst: inst.alt_outputs)
         get_alt_colors = get_alt_o if inverted else get_alt_i
@@ -256,7 +263,7 @@ class SpeakerLearner(NeuralLearner):
             print('%s _data_to_arrays:' % self.id)
         for i, inst in enumerate(training_instances):
             desc, color = get_desc(inst), get_color(inst)
-            if isinstance(color, numbers.Number):
+            if use_context:
                 color = get_color_indexed(inst)
             if test:
                 full = ['<s>'] + ['</s>'] * (self.seq_vec.max_len - 1)
@@ -272,6 +279,9 @@ class SpeakerLearner(NeuralLearner):
             if use_context:
                 new_context = get_alt_colors(inst)
                 index = get_color(inst)
+                if isinstance(index, tuple):
+                    assert len(index) == 1
+                    index = index[0]
                 assert len(new_context) == self.context_len, \
                     'Inconsistent context lengths: %s' % ((self.context_len, len(new_context)),)
                 colors.extend([c for j, c in enumerate(new_context) if j != index])

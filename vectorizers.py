@@ -700,6 +700,87 @@ class FourierVectorizer(ColorVectorizer):
         return l_color, [l_color]
 
 
+class TunaBinaryVectorizer(ColorVectorizer):
+    '''
+    Vectorizes tuna referents into a vector of {1,-1}, where each dimension is
+    an attribute of the referent.
+    '''
+    def __init__(self, resolution='ignored', hsv='ignored'):
+        '''
+        `resolution` and `hsv` are for compatibility with other color vectorizers;
+        their values are ignored.
+        '''
+        self.seq_vec = SequenceVectorizer()
+        attrs = [
+            ('colour', ['blue', 'green', 'grey', 'red']),
+            ('orientation', ['back', 'front', 'left', 'right']),
+            ('type', ['chair', 'desk', 'fan', 'sofa', 'person']),
+            ('size', ['small', 'large']),
+            ('x-dimension', ['1', '2', '3', '4', '5']),
+            ('y-dimension', ['1', '2', '3']),
+            ('age', ['old ', 'young ']),
+            ('hairColour', ['light', 'dark']),
+            ('hasSuit', ['0', '1']),
+            ('hasShirt', ['0', '1']),
+            ('hasTie', ['0', '1']),
+            ('hasBeard', ['0', '1']),
+            ('hasGlasses', ['0', '1']),
+            ('hasHair', ['0', '1']),
+        ]
+        for key, values in attrs:
+            self.seq_vec.add([':'.join((key, value)) for value in values])
+        self.output_size = self.seq_vec.num_types - 1
+
+    def vectorize(self, ref, hsv='ignored'):
+        '''
+        :param ref: An 1D array-like object containing string attribute values.
+        :return np.ndarray: A 1D array of floats with values 1. and -1.
+
+        >>> TunaBinaryVectorizer().vectorize(('color:green',))
+        array([-1.,  1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1.,
+               -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1.,
+               -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1.], dtype=float32)
+        '''
+        return self.vectorize_all([ref])[0]
+
+    def vectorize_all(self, refs, hsv='ignored'):
+        '''
+        >>> TunaBinaryVectorizer().vectorize_all([('hasGlasses:1',), ('hasHair:0',)])
+        array([[-1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1.,
+                -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1.,
+                -1., -1., -1., -1., -1., -1., -1., -1., -1., -1.,  1., -1., -1.],
+               [-1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1.,
+                -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1.,
+                -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1.,  1., -1.]], dtype=float32)
+        '''
+        result = -np.ones((len(refs), self.seq_vec.num_types), dtype=np.float32)
+        max_attrs = max(len(r) for r in refs)
+        padded_attrs = [r + ('<MASK>',) * (max_attrs - len(r)) for r in refs]
+        pos_indices = self.seq_vec.vectorize_all(padded_attrs)
+        result[np.arange(result.shape[0])[:, np.newaxis], pos_indices] = +1.
+        return result[:, 1:]
+
+    def unvectorize(self, color, random='ignored', hsv=None):
+        # Exact unvectorization is possible but currently isn't useful
+        # for TUNA data, so postponing implementation of this method.
+        raise NotImplementedError
+
+    def get_input_vars(self, id=None, recurrent=False):
+        id_tag = (id + '/') if id else ''
+        return [(T.tensor3 if recurrent else T.matrix)(id_tag + 'refs')]
+
+    def get_input_layer(self, input_vars, recurrent_length=0, cell_size=20,
+                        context_len=1, id=None):
+        id_tag = (id + '/') if id else ''
+        (input_var,) = input_vars
+        shape = ((None, self.output_size * context_len)
+                 if recurrent_length == 0 else
+                 (None, recurrent_length, self.output_size * context_len))
+        l_color = InputLayer(shape=shape, input_var=input_var,
+                             name=id_tag + 'ref_input')
+        return l_color, [l_color]
+
+
 def strip_invalid_tokens(sentence):
     good_tokens = [t for t in sentence if t not in ('<s>', '<MASK>')]
     if '</s>' in good_tokens:
@@ -713,6 +794,7 @@ COLOR_REPRS = {
     'buckets': BucketsVectorizer,
     'ms': MSVectorizer,
     'fourier': FourierVectorizer,
+    'tuna_binary': TunaBinaryVectorizer,
 }
 
 
