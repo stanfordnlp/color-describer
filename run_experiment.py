@@ -80,8 +80,10 @@ def main():
          metrics.aic]
     if options.listener and not isinstance(test_data[0].output, numbers.Integral):
         m.append(metrics.squared_error)
+    elif isinstance(test_data[0].output, (tuple, list)):
+        m.extend([metrics.prec1, metrics.bleu])
     else:
-        m.append(metrics.accuracy)
+        m.extend([metrics.accuracy, metrics.bleu])
 
     if options.load:
         with open(options.load, 'rb') as infile:
