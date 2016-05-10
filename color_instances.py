@@ -1,4 +1,5 @@
 import colorsys
+import csv
 from collections import namedtuple
 
 try:
@@ -228,6 +229,47 @@ def reference_game(insts, gen_func, listener=False):
     return result
 
 
+def hawkins_context(listener=False):
+    assert not listener
+    result = []
+    with open('hawkins_data/colorReferenceClicks.csv', 'r') as infile:
+        reader = csv.DictReader(infile)
+        for row in reader:
+            context = [
+                (hsl_to_hsv((row['%sColH' % i],
+                             row['%sColS' % i],
+                             row['%sColL' % i])),
+                 row['%sLocS' % i], row['%sStatus' % i])
+                for i in ('click', 'alt1', 'alt2')
+            ]
+            context.sort(key=lambda c: c[1])
+            target_idx = [i for i, (_, _, status) in enumerate(context) if status == 'target']
+            assert len(target_idx) == 1, context
+            target_idx = target_idx[0]
+            alt_colors = [c for (c, _, _) in context]
+            result.append(Instance(input=target_idx, alt_inputs=alt_colors))
+    return result
+
+
+def hsl_to_hsv(color):
+    '''
+    >>> hsl_to_hsv((0, 100, 100))
+    (0.0, 0.0, 100.0)
+    >>> hsl_to_hsv((120, 100, 50))
+    (120.0, 100.0, 100.0)
+    >>> hsl_to_hsv((240, 100, 0))
+    (240.0, 0.0, 0.0)
+    '''
+    hi, si, li = [float(d) for d in color]
+
+    ho = hi
+    si *= (li / 100.0) if li <= 50.0 else (1.0 - li / 100.0)
+    vo = li + si
+    so = (200.0 * si / (li + si)) if vo else 0.0
+
+    return (ho, so, vo)
+
+
 def uniform(color):
     r, g, b = rng.uniform(size=(3,))
     h, s, v = colorsys.rgb_to_hsv(r, g, b)
@@ -267,6 +309,7 @@ SOURCES = {
     'ref_uni': DataSource(reference_game_train(uniform), reference_game_test(uniform)),
     'ref_linrgb': DataSource(reference_game_train(linear_rgb), reference_game_test(linear_rgb)),
     'ref_linhsv': DataSource(reference_game_train(linear_hsv), reference_game_test(linear_hsv)),
+    'hawkins': DataSource(lambda listener: [], hawkins_context),
     'ams_literal': DataSource(amsterdam_literal_train, amsterdam_test),
     'ams_typical': DataSource(amsterdam_typical_train, amsterdam_test),
     'tuna_cv': DataSource(tuna_instances.tuna_train_cv, tuna_instances.tuna_test_cv),
