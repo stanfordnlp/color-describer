@@ -736,7 +736,7 @@ class TunaBinaryVectorizer(ColorVectorizer):
         :param ref: An 1D array-like object containing string attribute values.
         :return np.ndarray: A 1D array of floats with values 1. and -1.
 
-        >>> TunaBinaryVectorizer().vectorize(('color:green',))
+        >>> TunaBinaryVectorizer().vectorize(('colour:green',))
         array([-1.,  1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1.,
                -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1.,
                -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1.], dtype=float32)
