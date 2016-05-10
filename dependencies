@@ -26,6 +26,14 @@ if [ ! -e tuna ]; then
 # mv REG08_TUNA-AS_TEST-DATA_FULL tuna/test
 fi
 
+# Download Robert Hawkins' reference game data
+if [ ! -e hawkins_data ]; then
+    echo 'Downloading Hawkins ref game data...'
+    mkdir hawkins_data
+    wget https://raw.githubusercontent.com/hawkrobe/reference_games/e8dc1e99b8120061e06f4630ba6b937f7abfcc1c/data/colorReference/clickedObj/colorReferenceClicks.csv
+    mv colorReferenceClicks.csv hawkins_data/
+fi
+
 echo 'Installing Python module dependencies...'
 pip install ConfigArgParse pyhocon pypng 'Protobuf>=3.0.0b2' pydot graphviz scikit-learn scikit-image
 
