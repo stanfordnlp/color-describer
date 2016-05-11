@@ -20,14 +20,6 @@ stanza.research.config module
     :undoc-members:
     :show-inheritance:
 
-stanza.research.crc32c module
------------------------------
-
-.. automodule:: stanza.research.crc32c
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
 stanza.research.evaluate module
 -------------------------------
 
@@ -92,34 +84,10 @@ stanza.research.output module
     :undoc-members:
     :show-inheritance:
 
-stanza.research.pick_gpu module
--------------------------------
-
-.. automodule:: stanza.research.pick_gpu
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-stanza.research.progress module
--------------------------------
-
-.. automodule:: stanza.research.progress
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
 stanza.research.rng module
 --------------------------
 
 .. automodule:: stanza.research.rng
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-stanza.research.summary module
-------------------------------
-
-.. automodule:: stanza.research.summary
     :members:
     :undoc-members:
     :show-inheritance:
