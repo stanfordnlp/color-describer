@@ -82,9 +82,13 @@ def main():
     if options.listener and not isinstance(test_data[0].output, numbers.Integral):
         m.append(metrics.squared_error)
     elif isinstance(test_data[0].output, (tuple, list)):
-        m.extend([metrics.prec1, metrics.bleu])
+        m.append(metrics.prec1)
+        if test_data[0].output and isinstance(test_data[0].output, basestring):
+            m.append(metrics.bleu)
     else:
-        m.extend([metrics.accuracy, metrics.bleu])
+        m.append(metrics.accuracy)
+        if test_data[0].output and isinstance(test_data[0].output, basestring):
+            m.append(metrics.bleu)
 
     if options.load:
         with open(options.load, 'rb') as infile:
