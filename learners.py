@@ -1,8 +1,9 @@
 from collections import defaultdict, Counter
 import numpy as np
 
+from stanza.monitoring import progress
 from stanza.research.learner import Learner
-from stanza.research import progress, config
+from stanza.research import config
 from lux import LuxLearner
 from listener import ListenerLearner, ContextListenerLearner, AtomicListenerLearner
 from speaker import SpeakerLearner, ContextSpeakerLearner, AtomicSpeakerLearner

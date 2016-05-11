@@ -11,7 +11,8 @@ from lasagne.objectives import categorical_crossentropy
 from lasagne.nonlinearities import softmax
 from lasagne.updates import rmsprop
 
-from stanza.research import config, instance, progress, iterators, rng
+from stanza.monitoring import progress
+from stanza.research import config, instance, iterators, rng
 import color_instances
 import speaker
 from neural import NeuralLearner, SimpleLasagneModel

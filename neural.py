@@ -13,7 +13,8 @@ from theano.printing import pydotprint
 from helpers import apply_nan_suppression
 from vectorizers import BucketsVectorizer, RawVectorizer  # NOQA: pickle backwards compatibility
 from vectorizers import SymbolVectorizer, SequenceVectorizer  # NOQA: pickle backwards compatibility
-from stanza.research import config, progress, summary
+from stanza.monitoring import progress, summary
+from stanza.research import config
 from stanza.research.learner import Learner
 from stanza.research.rng import get_rng
 

@@ -10,7 +10,8 @@ from lasagne.nonlinearities import softmax
 from lasagne.objectives import categorical_crossentropy
 from lasagne.updates import rmsprop
 
-from stanza.research import config, progress, iterators, instance
+from stanza.monitoring import progress
+from stanza.research import config, iterators, instance
 from stanza.research.rng import get_rng
 import color_instances
 from neural import NeuralLearner, SimpleLasagneModel

@@ -1,7 +1,8 @@
 import numpy as np
 from scipy.misc import logsumexp
 
-from stanza.research import config, instance, progress, iterators
+from stanza.monitoring import progress
+from stanza.research import config, instance, iterators
 from stanza.research.learner import Learner
 
 import learners

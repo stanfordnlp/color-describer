@@ -2,7 +2,8 @@ import multiprocessing
 import numpy as np
 
 from rugstk.core.lux import LUX
-from stanza.research import progress, config
+from stanza.monitoring import progress
+from stanza.research import config
 from stanza.research.learner import Learner
 
 
