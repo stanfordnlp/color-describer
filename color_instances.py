@@ -247,8 +247,13 @@ def hawkins_context(listener=False):
             assert len(target_idx) == 1, context
             target_idx = target_idx[0]
             alt_colors = [c for (c, _, _) in context]
-            result.append(Instance(input=target_idx, alt_inputs=alt_colors))
+            result.append(Instance(input=target_idx, alt_inputs=alt_colors, output=''))
     return result
+
+
+def hawkins_target(listener=False):
+    insts = hawkins_context(listener=listener)
+    return [Instance(input=inst.alt_inputs[inst.input], output=inst.output) for inst in insts]
 
 
 def hsl_to_hsv(color):
@@ -310,6 +315,7 @@ SOURCES = {
     'ref_linrgb': DataSource(reference_game_train(linear_rgb), reference_game_test(linear_rgb)),
     'ref_linhsv': DataSource(reference_game_train(linear_hsv), reference_game_test(linear_hsv)),
     'hawkins': DataSource(lambda listener: [], hawkins_context),
+    'hawkins_target': DataSource(lambda listener: [], hawkins_target),
     'ams_literal': DataSource(amsterdam_literal_train, amsterdam_test),
     'ams_typical': DataSource(amsterdam_typical_train, amsterdam_test),
     'tuna_cv': DataSource(tuna_instances.tuna_train_cv, tuna_instances.tuna_test_cv),
