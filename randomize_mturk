@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+
+paste -d',' $@ | awk 'BEGIN {
+    FS = ",";
+    num_fields = 7;
+    batch_size = 10;
+}
+
+function permute(n,    i, p, r) {   # generate a random permutation
+    p = " ";                        # of n integers
+    for (i = 1; i <= n; i++)
+        if (p ~ " " (r = int(i*rand())+1) " " )
+            sub(" " r " ", " " r " " i " ", p)    # put i after r in p
+        else p = " " r p                     # put r at beginning of p
+    return p
+}
+
+NR != 1 {
+    num_models = NF / (num_fields * batch_size);
+    for (c = 0; c < batch_size; c++) {
+        perstr = permute(num_models);
+        split(perstr, per, " ");
+        for (m = 1; m <= num_models; m++) {
+            gsub(/ /, "", per[m]);
+            choices[c][m] = per[m];
+        }
+    }
+    for (m = 1; m <= num_models; m++) {
+        outputs[m] = "";
+    }
+
+    for (c = 0; c < batch_size; c++) {
+        for (f = 0; f < num_fields; f++) {
+            for (m = 1; m <= num_models; m++) {
+                if (outputs[m] != "") outputs[m] = outputs[m] ",";
+                outputs[m] = outputs[m] $( \
+                    (choices[c][m] - 1) * (num_fields * batch_size) + c * num_fields + f + 1 \
+                );
+            }
+        }
+    }
+
+    for (m = 1; m <= num_models; m++) {
+        print outputs[m];
+    }
+}
+
+NR == 1 {
+    output = "";
+    for (i = 0; i < num_fields * batch_size; i++) {
+        if (output != "") output = output ",";
+        output = output $(i + 1);
+    }
+    print output;
+}'

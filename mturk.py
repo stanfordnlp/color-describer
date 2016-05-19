@@ -13,7 +13,13 @@ BATCH_SIZE = 10
 
 
 def get_trial_data(dir_output, size, tag):
-    return [instance.Instance(pred, inst['input'], alt_outputs=inst['alt_inputs'], source=tag)
+    try:
+        use_source = 'alt_inputs' in dir_output.data[0]['source']
+    except (ValueError, KeyError):
+        use_source = False
+    src = lambda inst: (inst['source'] if use_source else inst)
+    return [instance.Instance(pred, src(inst)['input'],
+                              alt_outputs=src(inst)['alt_inputs'], source=tag)
             for inst, pred in zip(dir_output.data[:size], dir_output.predictions[:size])]
 
 
@@ -25,16 +31,16 @@ def output_csv():
 
     print(','.join('ex%d%s' % (ex, part)
                    for ex in range(BATCH_SIZE)
-                   for part in ['desc', 'c1', 'c2', 'c3']))
+                   for part in ['cid', 'system', 'desc', 'target', 'c1', 'c2', 'c3']))
 
-    for batch in iterators.iter_batches(insts, BATCH_SIZE):
+    for i, batch in enumerate(iterators.iter_batches(insts, BATCH_SIZE)):
         batch = list(batch)
         if len(batch) != BATCH_SIZE:
             continue
-        print(','.join('"%s","%s","%s","%s"' %
-                       ((inst.input,) +
+        print(','.join('"%d:%d","%s","%s","%s","%s","%s","%s"' %
+                       ((i, j, inst.source, inst.input, inst.output) +
                         tuple(html_report.web_color(c) for c in inst.alt_outputs[:3]))
-                       for inst in batch))
+                       for j, inst in enumerate(batch)))
 
 
 if __name__ == '__main__':
