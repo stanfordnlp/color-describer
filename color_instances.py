@@ -302,7 +302,9 @@ def hawkins_context(listener=False):
 
 def hawkins_target(listener=False):
     insts = hawkins_context(listener=listener)
-    return [Instance(input=inst.alt_inputs[inst.input], output=inst.output) for inst in insts]
+    return [Instance(input=inst.alt_inputs[inst.input], output=inst.output,
+                     source=inst.__dict__)
+            for inst in insts]
 
 
 def hsl_to_hsv(color):
