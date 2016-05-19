@@ -1,3 +1,4 @@
+import numbers
 import numpy as np
 import theano.tensor as T
 import warnings
@@ -264,7 +265,7 @@ class SpeakerLearner(NeuralLearner):
             print('%s _data_to_arrays:' % self.id)
         for i, inst in enumerate(training_instances):
             desc, color = get_desc(inst), get_color(inst)
-            if use_context:
+            if isinstance(color, numbers.Number):
                 color = get_color_indexed(inst)
             if test:
                 full = ['<s>'] + ['</s>'] * (self.seq_vec.max_len - 1)
