@@ -163,7 +163,7 @@ class RSAGraphModel(SimpleLasagneModel):
         for agent in self.listeners:
             agent.model.build_sample_vars(len(self.speakers))
 
-        monitored = self.get_est_loss()
+        monitored = self.get_est_loss(layer_by_layer=options.layer_by_layer)
         if options.grad_of_est:
             est_grad, monitored_grads = self.get_grad_of_est(monitored, params)
         else:
@@ -176,16 +176,20 @@ class RSAGraphModel(SimpleLasagneModel):
 
         return monitored, est_grad, synth_vars
 
-    def get_est_loss(self):
+    def get_est_loss(self, layer_by_layer=False):
         options = config.options()
 
         def kl(agent_p, agent_q, other_idx):
-            return (
-                agent_p.log_joint_emp(agent_p.model.sample_inputs_self,
-                                      agent_p.model.sample_target_self) -
-                agent_q.log_joint_smooth(agent_q.model.sample_inputs_others[other_idx],
-                                         agent_q.model.sample_target_others[other_idx])
-            ).mean()
+            if layer_by_layer:
+                return agent_q.loss_out(agent_q.model.sample_inputs_others[other_idx],
+                                        agent_q.model.sample_target_others[other_idx]).mean()
+            else:
+                return (
+                    agent_p.log_joint_emp(agent_p.model.sample_inputs_self,
+                                          agent_p.model.sample_target_self) -
+                    agent_q.log_joint_smooth(agent_q.model.sample_inputs_others[other_idx],
+                                             agent_q.model.sample_target_others[other_idx])
+                ).mean()
 
         id_tag_log = (self.id + ': ') if self.id else ''
         id_tag = (self.id + '/') if self.id else ''
