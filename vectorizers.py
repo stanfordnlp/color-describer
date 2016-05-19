@@ -390,7 +390,7 @@ class BucketsVectorizer(ColorVectorizer):
         output_shape = (([0], context_len * cell_size)
                         if recurrent_length == 0 else
                         ([0], recurrent_length, context_len * cell_size))
-        l_color_shape = reshape(l_color_embed, output_shape)
+        l_color_shape = reshape(l_color_embed, output_shape, name=id_tag + 'color_embed_flattened')
         return l_color_shape, [l_color]
 
     def __setstate__(self, state):
