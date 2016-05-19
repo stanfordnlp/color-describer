@@ -5,7 +5,7 @@ from stanza.monitoring import progress
 from stanza.research.learner import Learner
 from stanza.research import config
 from lux import LuxLearner
-from listener import ListenerLearner, ContextListenerLearner, AtomicListenerLearner
+from listener import LISTENERS
 from speaker import SpeakerLearner, ContextSpeakerLearner, AtomicSpeakerLearner
 from vectorizers import BucketsVectorizer
 from rsa import RSALearner
@@ -309,9 +309,6 @@ class LookupLearner(Learner):
 LEARNERS = {
     'Histogram': HistogramLearner,
     'Lux': LuxLearner,
-    'Listener': ListenerLearner,
-    'ContextListener': ContextListenerLearner,
-    'AtomicListener': AtomicListenerLearner,
     'Speaker': SpeakerLearner,
     'ContextSpeaker': ContextSpeakerLearner,
     'AtomicSpeaker': AtomicSpeakerLearner,
@@ -320,6 +317,7 @@ LEARNERS = {
     'Random': RandomListenerLearner,
     'Lookup': LookupLearner,
 }
+LEARNERS.update(LISTENERS)
 
 # Break cyclic dependency: ExhaustiveS1Learner needs list of learners to define
 # exhaustive_base_learner command line option, LEARNERS needs ExhaustiveS1Learner
