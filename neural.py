@@ -334,6 +334,7 @@ class NeuralLearner(Learner):
                 for key, value in validation_results.iteritems():
                     tag = 'val/' + key.split('.', 1)[1].replace('.', '/')
                     writer.log_scalar(step, tag, value)
+        writer.flush()
         progress.end_task()
 
     def on_iter_end(self, step, writer):
