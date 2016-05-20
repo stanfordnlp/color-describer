@@ -132,7 +132,7 @@ class RSASubModel(SimpleLasagneModel):
 
 class RSAGraphModel(SimpleLasagneModel):
     def __init__(self, listeners, speakers, eval_agent, id=None):
-        options = config.options()
+        self.get_options()
 
         self.listeners = listeners
         self.speakers = speakers
@@ -142,9 +142,9 @@ class RSAGraphModel(SimpleLasagneModel):
         target_vars = ([listener.model.target_var for listener in listeners] +
                        [speaker.model.target_var for speaker in speakers])
         super(RSAGraphModel, self).__init__(input_vars, target_vars,
-                                            l_out=eval_agent.model.l_out,
-                                            loss=None, optimizer=OPTIMIZERS[options.rsa_optimizer],
-                                            learning_rate=options.rsa_learning_rate,
+                                            l_out=eval_agent.model.l_out, loss=None,
+                                            optimizer=OPTIMIZERS[self.options.rsa_optimizer],
+                                            learning_rate=self.options.rsa_learning_rate,
                                             id=id)
 
     def params(self):
@@ -156,19 +156,17 @@ class RSAGraphModel(SimpleLasagneModel):
         return result
 
     def get_train_loss(self, target_vars, params):
-        options = config.options()
-
         for agent in self.speakers:
             agent.model.build_sample_vars(len(self.listeners))
         for agent in self.listeners:
             agent.model.build_sample_vars(len(self.speakers))
 
-        monitored = self.get_est_loss(layer_by_layer=options.layer_by_layer)
-        if options.grad_of_est:
+        monitored = self.get_est_loss(layer_by_layer=self.options.layer_by_layer)
+        if self.options.grad_of_est:
             est_grad, monitored_grads = self.get_grad_of_est(monitored, params)
         else:
-            est_grad, monitored_grads = self.get_est_grad(params,
-                                                          layer_by_layer=options.layer_by_layer)
+            est_grad, monitored_grads = self.get_est_grad(
+                params, layer_by_layer=self.options.layer_by_layer)
         monitored.update(monitored_grads)
         synth_vars = [v
                       for agent in self.listeners + self.speakers
@@ -177,8 +175,6 @@ class RSAGraphModel(SimpleLasagneModel):
         return monitored, est_grad, synth_vars
 
     def get_est_loss(self, layer_by_layer=False):
-        options = config.options()
-
         def kl(agent_p, agent_q, other_idx):
             if layer_by_layer:
                 return agent_q.loss_out(agent_q.model.sample_inputs_others[other_idx],
@@ -194,46 +190,44 @@ class RSAGraphModel(SimpleLasagneModel):
         id_tag_log = (self.id + ': ') if self.id else ''
         id_tag = (self.id + '/') if self.id else ''
         # \alpha * KL(dataset || L) = \alpha * log L(dataset) + C
-        if options.verbosity >= 4:
+        if self.options.verbosity >= 4:
             print(id_tag_log + 'loss: KL(dataset || L)')
         alpha_losses = [
             ('%salpha_%s' % (id_tag, listener.id), alpha * listener.loss_out().mean())
-            for alpha, listener in zip(options.rsa_alpha, self.listeners)
+            for alpha, listener in zip(self.options.rsa_alpha, self.listeners)
         ]
         # \beta * KL(dataset || S) = \beta * log S(dataset) + C
-        if options.verbosity >= 4:
+        if self.options.verbosity >= 4:
             print(id_tag_log + 'loss: KL(dataset || S)')
         beta_losses = [
             ('%sbeta_%s' % (id_tag, speaker.id), beta * speaker.loss_out().mean())
-            for beta, speaker in zip(options.rsa_beta, self.speakers)
+            for beta, speaker in zip(self.options.rsa_beta, self.speakers)
         ]
 
         # \mu * KL(L || S)
-        if options.verbosity >= 4:
+        if self.options.verbosity >= 4:
             print(id_tag_log + 'loss: KL(L || S)')
         mu_losses = [
             ('%smu_%s_%s' % (id_tag, listener.id, speaker.id), mu * kl(listener, speaker, j))
-            for mu, (listener, j, speaker, k) in zip(options.rsa_mu, self.dyads())
+            for mu, (listener, j, speaker, k) in zip(self.options.rsa_mu, self.dyads())
         ]
         # \nu * KL(S || L)
-        if options.verbosity >= 4:
+        if self.options.verbosity >= 4:
             print(id_tag_log + 'loss: KL(S || L)')
         nu_losses = [
             ('%snu_%s_%s' % (id_tag, speaker.id, listener.id), nu * kl(speaker, listener, k))
-            for nu, (listener, j, speaker, k) in zip(options.rsa_nu, self.dyads())
+            for nu, (listener, j, speaker, k) in zip(self.options.rsa_nu, self.dyads())
         ]
 
         all_sublosses = alpha_losses + beta_losses + mu_losses + nu_losses
         est_loss = t_sum(loss for tag, loss in all_sublosses)
 
         monitored = OrderedDict([('loss', est_loss)])
-        if options.monitor_sublosses:
+        if self.options.monitor_sublosses:
             monitored.update(all_sublosses)
         return monitored
 
     def get_est_grad(self, params, layer_by_layer=False):
-        options = config.options()
-
         def mean_weighted_grad(weights, loss):
             # Lop to the rescue! Here I was calling T.jacobian and trying to
             # broadcast things and elementwise-multiply through the resulting lists,
@@ -248,42 +242,42 @@ class RSAGraphModel(SimpleLasagneModel):
         id_tag = (self.id + ': ') if self.id else ''
         # alpha and beta: train the agents directly against the dataset.
         #   \alpha_j E_D [-d/d\theta_j log L(c | m; \theta_j)]
-        if options.verbosity >= 4:
+        if self.options.verbosity >= 4:
             print(id_tag + 'grad: alpha')
         all_subgrads = [
             ('grad_alpha/%s' % (listener.id,),
              mean_grad(alpha * listener.loss_out()))
-            for alpha, listener in zip(options.rsa_alpha, self.listeners)
+            for alpha, listener in zip(self.options.rsa_alpha, self.listeners)
         ]
         #   \beta_k E_D [-d/d\phi_k log S(m | c; \phi_k)]
-        if options.verbosity >= 4:
+        if self.options.verbosity >= 4:
             print(id_tag + 'grad: beta')
         all_subgrads.extend([
             ('grad_beta/%s' % (speaker.id,),
              mean_grad(beta * speaker.loss_out()))
-            for beta, speaker in zip(options.rsa_beta, self.speakers)
+            for beta, speaker in zip(self.options.rsa_beta, self.speakers)
         ])
 
         # The "simple" mu and nu terms: train the agents directly against each other.
         # These are still ordinary log-likelihood terms; the complexity comes from
         # identifying the right input variables and iterating over the m x n dyads.
         #   sum_k \nu_jk E_{G_S(\phi_k)} [-d/d\theta_j log L(c | m; \theta_j)]
-        if options.verbosity >= 4:
+        if self.options.verbosity >= 4:
             print(id_tag + 'grad: nu co-training')
         all_subgrads.extend([
             ('grad_nu_co/%s_%s' % (listener.id, speaker.id),
              mean_grad(nu * listener.loss_out(listener.model.sample_inputs_others[k],
                                               listener.model.sample_target_others[k])))
-            for nu, (listener, j, speaker, k) in zip(options.rsa_nu, self.dyads())
+            for nu, (listener, j, speaker, k) in zip(self.options.rsa_nu, self.dyads())
         ])
         #   sum_j \nu_jk E_{G_L(\theta_j)} [-d/d\phi_k log S(m | c; \phi_k)]
-        if options.verbosity >= 4:
+        if self.options.verbosity >= 4:
             print(id_tag + 'grad: mu co-training')
         all_subgrads.extend([
             ('grad_mu_co/%s_%s' % (listener.id, speaker.id),
              mean_grad(mu * speaker.loss_out(speaker.model.sample_inputs_others[j],
                                              speaker.model.sample_target_others[j])))
-            for mu, (listener, j, speaker, k) in zip(options.rsa_mu, self.dyads())
+            for mu, (listener, j, speaker, k) in zip(self.options.rsa_mu, self.dyads())
         ])
 
         # The "hard" mu and nu terms: regularize the agents with maximum entropy and
@@ -294,7 +288,7 @@ class RSAGraphModel(SimpleLasagneModel):
             #   sum_k \mu_jk E_{G_L(\theta_j)}
             #     [(1 + log G_L(c, m; \theta_j) - log H_S(c, m; \phi_k)) *
             #      d/d\theta_j log L(c | m; \theta_j)]
-            if options.verbosity >= 4:
+            if self.options.verbosity >= 4:
                 print(id_tag + 'grad: mu regularizer')
             all_subgrads.extend([
                 ('grad_mu_reg/%s_%s' % (listener.id, speaker.id),
@@ -306,12 +300,12 @@ class RSAGraphModel(SimpleLasagneModel):
                                                speaker.model.sample_target_others[j])),
                      listener.loss_out(listener.model.sample_inputs_self,
                                        listener.model.sample_target_self)))
-                for mu, (listener, j, speaker, k) in zip(options.rsa_mu, self.dyads())
+                for mu, (listener, j, speaker, k) in zip(self.options.rsa_mu, self.dyads())
             ])
             #   sum_j \nu_jk E_{G_S(\phi_k)}
             #     [(1 + log G_S(c, m; \phi_k) - log H_L(c, m; \theta_j)) *
             #      d/d\phi_k log S(m | c; \phi_k)]
-            if options.verbosity >= 4:
+            if self.options.verbosity >= 4:
                 print(id_tag + 'grad: nu regularizer')
             all_subgrads.extend([
                 ('grad_nu_reg/%s_%s' % (listener.id, speaker.id),
@@ -323,18 +317,18 @@ class RSAGraphModel(SimpleLasagneModel):
                                                 listener.model.sample_target_others[k])),
                      speaker.loss_out(speaker.model.sample_inputs_self,
                                       speaker.model.sample_target_self)))
-                for nu, (listener, j, speaker, k) in zip(options.rsa_nu, self.dyads())
+                for nu, (listener, j, speaker, k) in zip(self.options.rsa_nu, self.dyads())
             ])
 
         est_grad = t_sum([grads for tag, grads in all_subgrads], nested=True)
 
         monitored = OrderedDict()
-        if options.monitor_grads:
+        if self.options.monitor_grads:
             monitored.update([
                 ('grad/' + param.name, grad)
                 for param, grad in zip(params, est_grad)
             ])
-        if options.monitor_subgrads:
+        if self.options.monitor_subgrads:
             monitored.update([
                 (tag + '/' + param.name, grad)
                 for tag, grads in all_subgrads
@@ -343,17 +337,15 @@ class RSAGraphModel(SimpleLasagneModel):
         return est_grad, monitored
 
     def get_grad_of_est(self, monitored, params):
-        options = config.options()
-
         grad_of_est = T.grad(monitored['loss'], params)
 
         monitored_grads = OrderedDict()
-        if options.monitor_grads:
+        if self.options.monitor_grads:
             monitored_grads.update([
                 ('grad/' + param.name, grad)
                 for param, grad in zip(params, grad_of_est)
             ])
-        if options.monitor_subgrads:
+        if self.options.monitor_subgrads:
             monitored_grads.update([
                 (tag + '/' + param.name, grad)
                 for tag, subloss in monitored.iteritems() if tag != 'loss'
@@ -369,8 +361,6 @@ class RSAGraphModel(SimpleLasagneModel):
                 yield (listener, j, speaker, k)
 
     def minibatches(self, inputs, targets, batch_size, shuffle=False):
-        options = config.options()
-
         agents = self.listeners + self.speakers
         batches = super(RSAGraphModel, self).minibatches(inputs, targets, batch_size,
                                                          shuffle=shuffle)
@@ -385,16 +375,16 @@ class RSAGraphModel(SimpleLasagneModel):
                 targets_batch.extend(agent_targets)
                 input_types = [a.shape for a in agent_inputs]
                 target_types = [a.shape for a in agent_targets]
-                if options.verbosity >= 8:
+                if self.options.verbosity >= 8:
                     print('%s: %s -> %s' % (agent.id, input_types, target_types))
 
-            listener_samples = [listener.sample_joint_smooth(options.listener_samples)
-                                if options.listener_sample_smoothed else
-                                listener.sample_joint_emp(options.listener_samples)
+            listener_samples = [listener.sample_joint_smooth(self.options.listener_samples)
+                                if self.options.listener_sample_smoothed else
+                                listener.sample_joint_emp(self.options.listener_samples)
                                 for listener in self.listeners]
-            speaker_samples = [speaker.sample_joint_smooth(options.speaker_samples)
-                               if options.speaker_sample_smoothed else
-                               speaker.sample_joint_emp(options.listener_samples)
+            speaker_samples = [speaker.sample_joint_smooth(self.options.speaker_samples)
+                               if self.options.speaker_sample_smoothed else
+                               speaker.sample_joint_emp(self.options.listener_samples)
                                for speaker in self.speakers]
 
             for listener, samples in zip(self.listeners, listener_samples):
@@ -402,14 +392,14 @@ class RSAGraphModel(SimpleLasagneModel):
                                                              speaker_samples)
                 synth_batch.extend(arrays)
                 synth_types = [a.shape for a in arrays]
-                if options.verbosity >= 8:
+                if self.options.verbosity >= 8:
                     print('%s synth: %s' % (listener.id, synth_types))
             for speaker, samples in zip(self.speakers, speaker_samples):
                 arrays = speaker.model.data_to_synth_arrays(speaker, samples,
                                                             listener_samples)
                 synth_batch.extend(arrays)
                 synth_types = [a.shape for a in arrays]
-                if options.verbosity >= 8:
+                if self.options.verbosity >= 8:
                     print('%s synth: %s' % (speaker.id, synth_types))
             yield inputs_batch, targets_batch, synth_batch
 
@@ -428,36 +418,34 @@ class RSAGraphModel(SimpleLasagneModel):
 
 class RSALearner(NeuralLearner):
     def __init__(self, id=None):
+        self.get_options()
         self.init_submodels(id)
         super(RSALearner, self).__init__(id=id)
 
-        options = config.options()
-        color_resolution = (options.listener_color_resolution
-                            if options.listener else
-                            options.speaker_color_resolution)
+        color_resolution = (self.options.listener_color_resolution
+                            if self.options.listener else
+                            self.options.speaker_color_resolution)
         self.seq_vec = SequenceVectorizer()
-        self.color_vec = BucketsVectorizer(color_resolution, hsv=options.speaker_hsv)
+        self.color_vec = BucketsVectorizer(color_resolution, hsv=self.options.speaker_hsv)
 
     def init_submodels(self, id=None):
-        options = config.options()
-
         id_tag = (id + '/') if id else ''
 
-        listener_classes = options.listener_class
-        speaker_classes = options.speaker_class
-        if len(listener_classes) != options.rsa_listeners:
+        listener_classes = self.options.listener_class
+        speaker_classes = self.options.speaker_class
+        if len(listener_classes) != self.options.rsa_listeners:
             assert len(listener_classes) == 1, len(listener_classes)
-            listener_classes = listener_classes * options.rsa_listeners
-        if len(speaker_classes) != options.rsa_speakers:
+            listener_classes = listener_classes * self.options.rsa_listeners
+        if len(speaker_classes) != self.options.rsa_speakers:
             assert len(speaker_classes) == 1, len(speaker_classes)
-            speaker_classes = speaker_classes * options.rsa_speakers
+            speaker_classes = speaker_classes * self.options.rsa_speakers
         self.listeners = [LISTENERS[listener_classes[j]](id='%sL%d' % (id_tag, j))
-                          for j in range(options.rsa_listeners)]
+                          for j in range(self.options.rsa_listeners)]
         self.speakers = [SPEAKERS[speaker_classes[k]](id='%sS%d' % (id_tag, k))
-                         for k in range(options.rsa_speakers)]
+                         for k in range(self.options.rsa_speakers)]
 
-        agents = self.listeners if options.listener else self.speakers
-        self.eval_agent = agents[options.eval_agent]
+        agents = self.listeners if self.options.listener else self.speakers
+        self.eval_agent = agents[self.options.eval_agent]
 
     def predict(self, eval_instances):
         return self.eval_agent.predict(eval_instances)
@@ -474,12 +462,10 @@ class RSALearner(NeuralLearner):
 
     def _data_to_arrays(self, training_instances,
                         init_vectorizer=False, test=False, inverted=False):
-        options = config.options()
-
         input_arrays = []
         target_arrays = []
 
-        if options.listener != inverted:
+        if self.options.listener != inverted:
             listener_dataset = training_instances
             speaker_dataset = [inst.inverted() for inst in training_instances]
         else:
@@ -509,10 +495,9 @@ class RSALearner(NeuralLearner):
         self.build_aggregate_model()
 
     def train_priors(self, training_instances, listener_data=False):
-        options = config.options()
-        prior_class = (LISTENER_PRIORS[options.listener_prior]
-                       if options.listener else
-                       SPEAKER_PRIORS[options.speaker_prior])
+        prior_class = (LISTENER_PRIORS[self.options.listener_prior]
+                       if self.options.listener else
+                       SPEAKER_PRIORS[self.options.speaker_prior])
         self.prior_emp = prior_class()
         self.prior_smooth = prior_class()
 

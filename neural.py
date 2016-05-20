@@ -1,5 +1,7 @@
+import argparse
 import lasagne
 import numpy as np
+import os
 import theano
 import theano.tensor as T
 import theano.sandbox.cuda.basic_ops as G
@@ -118,12 +120,12 @@ class Unpicklable(object):
 class SimpleLasagneModel(object):
     def __init__(self, input_vars, target_vars, l_out, loss,
                  optimizer, learning_rate=0.001, id=None):
-        options = config.options()
-
         if not isinstance(input_vars, Sequence):
             raise ValueError('input_vars should be a sequence, instead got %s' % (input_vars,))
         if not isinstance(target_vars, Sequence):
             raise ValueError('target_vars should be a sequence, instead got %s' % (input_vars,))
+
+        self.get_options()
 
         self.input_vars = input_vars
         self.l_out = l_out
@@ -139,70 +141,69 @@ class SimpleLasagneModel(object):
          synth_vars) = self.get_train_loss(target_vars, params)
         self.monitored_tags = monitored.keys()
 
-        if options.true_grad_clipping:
-            scaled_grads = total_norm_constraint(train_loss_grads, options.true_grad_clipping)
+        if self.options.true_grad_clipping:
+            scaled_grads = total_norm_constraint(train_loss_grads, self.options.true_grad_clipping)
         else:
             scaled_grads = train_loss_grads
 
         updates = optimizer(scaled_grads, params, learning_rate=learning_rate)
-        if not options.no_nan_suppression:
+        if not self.options.no_nan_suppression:
             # TODO: print_mode='all' somehow is always printing, even when
             # there are no NaNs. But tests are passing, even on GPU!
             updates = apply_nan_suppression(updates, print_mode='none')
 
-        if options.detect_nans:
+        if self.options.detect_nans:
             mode = MonitorMode(post_func=detect_nan)
         else:
             mode = None
 
-        if options.verbosity >= 2:
+        if self.options.verbosity >= 2:
             print(id_tag_log + 'Compiling training function')
         params = input_vars + target_vars + synth_vars
-        if options.verbosity >= 6:
+        if self.options.verbosity >= 6:
             print('params = %s' % (params,))
         self.train_fn = theano.function(params, monitored.values(),
                                         updates=updates, mode=mode,
                                         name=id_tag + 'train', on_unused_input='warn')
-        self.visualize_graphs({'loss': monitored['loss']})
+        if self.options.run_dir and not self.options.no_graphviz:
+            self.visualize_graphs({'loss': monitored['loss']},
+                                  out_dir=self.options.run_dir)
 
         test_prediction = get_output(l_out, deterministic=True)
-        if options.verbosity >= 2:
+        if self.options.verbosity >= 2:
             print(id_tag_log + 'Compiling prediction function')
-        if options.verbosity >= 6:
+        if self.options.verbosity >= 6:
             print('params = %s' % (input_vars,))
         self.predict_fn = theano.function(input_vars, test_prediction, mode=mode,
                                           name=id_tag + 'predict', on_unused_input='ignore')
-        self.visualize_graphs({'test_prediction': test_prediction})
 
-    def visualize_graphs(self, monitored):
-        options = config.options()
+        if self.options.run_dir and not self.options.no_graphviz:
+            self.visualize_graphs({'test_prediction': test_prediction},
+                                  out_dir=self.options.run_dir)
+
+    def visualize_graphs(self, monitored, out_dir):
         id_tag = (self.id + '.') if self.id else ''
 
-        if options.run_dir and not options.no_graphviz:
-            for tag, graph in monitored.iteritems():
-                tag = tag.replace('/', '.')
-                pydotprint(graph, outfile=config.get_file_path(id_tag + tag + '.svg'),
-                           format='svg', var_with_name_simple=True)
+        for tag, graph in monitored.iteritems():
+            tag = tag.replace('/', '.')
+            pydotprint(graph, outfile=os.path.join(out_dir, id_tag + tag + '.svg'),
+                       format='svg', var_with_name_simple=True)
 
     def params(self):
         return get_all_params(self.l_out, trainable=True)
 
     def get_train_loss(self, target_vars, params):
-        options = config.options()
-
         assert len(target_vars) == 1
         prediction = get_output(self.l_out)
         mean_loss = self.loss(prediction, target_vars[0]).mean()
         monitored = [('loss', mean_loss)]
         grads = T.grad(mean_loss, params)
-        if options.monitor_grads:
+        if self.options.monitor_grads:
             for p, grad in zip(params, grads):
                 monitored.append(('grad/' + p.name, grad))
         return OrderedDict(monitored), grads, []
 
     def fit(self, Xs, ys, batch_size, num_epochs, summary_writer=None, step=0):
-        options = config.options()
-
         if not isinstance(Xs, Sequence):
             raise ValueError('Xs should be a sequence, instead got %s' % (Xs,))
         if not isinstance(ys, Sequence):
@@ -221,13 +222,13 @@ class SimpleLasagneModel(object):
             progress.start_task('Minibatch', num_minibatches_approx)
             for i, batch in enumerate(self.minibatches(Xs, ys, batch_size, shuffle=True)):
                 progress.progress(i)
-                if options.verbosity >= 8:
+                if self.options.verbosity >= 8:
                     print('types: %s' % ([type(v) for t in batch for v in t],))
                     print('shapes: %s' % ([v.shape for t in batch for v in t],))
                 inputs, targets, synth = batch
                 monitored = self.train_fn(*inputs + targets + synth)
                 for tag, value in zip(self.monitored_tags, monitored):
-                    if options.verbosity >= 10:
+                    if self.options.verbosity >= 10:
                         print('%s: %s' % (tag, value))
                     history_epoch[tag].append(value)
             progress.end_task()
@@ -240,7 +241,7 @@ class SimpleLasagneModel(object):
                 else:
                     summary_writer.log_histogram(step + epoch, tag, mean_values)
 
-            if options.monitor_params:
+            if self.options.monitor_params:
                 for param in params:
                     val = param.get_value()
                     tag = 'param/' + param.name
@@ -259,12 +260,10 @@ class SimpleLasagneModel(object):
         return history
 
     def predict(self, Xs):
-        options = config.options()
-
         if not isinstance(Xs, Sequence):
             raise ValueError('Xs should be a sequence, instead got %s' % (Xs,))
         id_tag_log = (self.id + ': ') if self.id else ''
-        if options.verbosity >= 8:
+        if self.options.verbosity >= 8:
             print(id_tag_log + 'predict shapes: %s' % [x.shape for x in Xs])
         return self.predict_fn(*Xs)
 
@@ -293,6 +292,15 @@ class SimpleLasagneModel(object):
         state['l_out'] = Unpicklable('l_out')
         return state
 
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.get_options()
+
+    def get_options(self):
+        if not hasattr(self, 'options'):
+            options = config.options()
+            self.options = argparse.Namespace(**options.__dict__)
+
 
 class NeuralLearner(Learner):
     '''
@@ -302,34 +310,34 @@ class NeuralLearner(Learner):
     def __init__(self, id=None):
         super(NeuralLearner, self).__init__()
         self.id = id
+        self.get_options()
 
     def train(self, training_instances, validation_instances=None, metrics=None):
-        options = config.options()
-
         id_tag = (self.id + ': ') if self.id else ''
-        if options.verbosity >= 2:
+        if self.options.verbosity >= 2:
             print(id_tag + 'Training priors')
-        self.train_priors(training_instances, listener_data=options.listener)
+        self.train_priors(training_instances, listener_data=self.options.listener)
 
         self.dataset = training_instances
         xs, ys = self._data_to_arrays(training_instances, init_vectorizer=True)
         self._build_model()
 
-        if options.verbosity >= 2:
+        if self.options.verbosity >= 2:
             print(id_tag + 'Training conditional model')
         summary_path = config.get_file_path('losses.tfevents')
         if summary_path:
             writer = summary.SummaryWriter(summary_path)
         else:
             writer = None
-        progress.start_task('Iteration', options.train_iters)
-        for iteration in range(options.train_iters):
+        progress.start_task('Iteration', self.options.train_iters)
+        for iteration in range(self.options.train_iters):
             progress.progress(iteration)
-            self.model.fit(xs, ys, batch_size=options.batch_size, num_epochs=options.train_epochs,
-                           summary_writer=writer, step=iteration * options.train_epochs)
+            self.model.fit(xs, ys, batch_size=self.options.batch_size,
+                           num_epochs=self.options.train_epochs,
+                           summary_writer=writer, step=iteration * self.options.train_epochs)
             validation_results = self.validate(validation_instances, metrics, iteration=iteration)
             if writer is not None:
-                step = (iteration + 1) * options.train_epochs
+                step = (iteration + 1) * self.options.train_epochs
                 self.on_iter_end(step, writer)
                 for key, value in validation_results.iteritems():
                     tag = 'val/' + key.split('.', 1)[1].replace('.', '/')
@@ -408,7 +416,10 @@ class NeuralLearner(Learner):
     def unpickle(self, state, model_class=SimpleLasagneModel):
         if isinstance(state, dict) and 'quickpickle' in state and state['quickpickle']:
             self.__dict__.update(state)
+            self.get_options()
             return
+
+        self.get_options()
 
         # TODO: remove references to the vectorizers from this superclass
         if len(state) == 3:
@@ -427,3 +438,8 @@ class NeuralLearner(Learner):
         assert len(params) == len(params_state), '%d != %d' % (len(params), len(params_state))
         for p, value in zip(params, params_state):
             p.set_value(value)
+
+    def get_options(self):
+        if not hasattr(self, 'options'):
+            options = config.options()
+            self.options = argparse.Namespace(**options.__dict__)

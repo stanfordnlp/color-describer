@@ -146,23 +146,20 @@ class SpeakerLearner(NeuralLearner):
     '''
     def __init__(self, id=None, context_len=1):
         super(SpeakerLearner, self).__init__(id=id)
-        options = config.options()
         self.seq_vec = SequenceVectorizer()
-        color_repr = COLOR_REPRS[options.speaker_color_repr]
-        self.color_vec = color_repr(options.speaker_color_resolution,
-                                    hsv=options.speaker_hsv)
+        color_repr = COLOR_REPRS[self.options.speaker_color_repr]
+        self.color_vec = color_repr(self.options.speaker_color_resolution,
+                                    hsv=self.options.speaker_hsv)
         self.context_len = context_len
 
     def predict(self, eval_instances, random=False, verbosity=0):
-        options = config.options()
-
         result = []
-        batches = iterators.iter_batches(eval_instances, options.speaker_eval_batch_size)
-        num_batches = (len(eval_instances) - 1) // options.speaker_eval_batch_size + 1
+        batches = iterators.iter_batches(eval_instances, self.options.speaker_eval_batch_size)
+        num_batches = (len(eval_instances) - 1) // self.options.speaker_eval_batch_size + 1
 
         eos_index = self.seq_vec.vectorize(['</s>'])[0]
 
-        if options.verbosity + verbosity >= 2:
+        if self.options.verbosity + verbosity >= 2:
             print('Predicting')
         progress.start_task('Predict batch', num_batches)
         for batch_num, batch in enumerate(batches):
@@ -172,7 +169,7 @@ class SpeakerLearner(NeuralLearner):
             (c, _p, mask), (_y,) = self._data_to_arrays(batch, test=True)
             assert mask.all()  # We shouldn't be masking anything in prediction
 
-            beam_size = 1 if random else options.speaker_beam_size
+            beam_size = 1 if random else self.options.speaker_beam_size
             done = np.zeros((len(batch), beam_size), dtype=np.bool)
             beam = np.zeros((len(batch), beam_size, self.seq_vec.max_len),
                             dtype=np.int32)
@@ -206,13 +203,11 @@ class SpeakerLearner(NeuralLearner):
         return result
 
     def score(self, eval_instances, verbosity=0):
-        options = config.options()
-
         result = []
-        batches = iterators.iter_batches(eval_instances, options.speaker_eval_batch_size)
-        num_batches = (len(eval_instances) - 1) // options.speaker_eval_batch_size + 1
+        batches = iterators.iter_batches(eval_instances, self.options.speaker_eval_batch_size)
+        num_batches = (len(eval_instances) - 1) // self.options.speaker_eval_batch_size + 1
 
-        if options.verbosity + verbosity >= 2:
+        if self.options.verbosity + verbosity >= 2:
             print('Scoring')
         progress.start_task('Score batch', num_batches)
         for batch_num, batch in enumerate(batches):
@@ -234,8 +229,6 @@ class SpeakerLearner(NeuralLearner):
 
     def _data_to_arrays(self, training_instances,
                         init_vectorizer=False, test=False, inverted=False):
-        options = config.options()
-
         context_len = self.context_len if hasattr(self, 'context_len') else 1
         use_context = context_len > 1
 
@@ -262,7 +255,7 @@ class SpeakerLearner(NeuralLearner):
         colors = []
         previous = []
         next_tokens = []
-        if options.verbosity >= 9:
+        if self.options.verbosity >= 9:
             print('%s _data_to_arrays:' % self.id)
         for i, inst in enumerate(training_instances):
             desc, color = get_desc(inst), get_color(inst)
@@ -276,7 +269,7 @@ class SpeakerLearner(NeuralLearner):
                         ['<MASK>'] * (self.seq_vec.max_len - 1 - len(desc)))
             prev = full[:-1]
             next = full[1:]
-            if options.verbosity >= 9:
+            if self.options.verbosity >= 9:
                 print('%s, %s -> %s' % (repr(color), repr(prev), repr(next)))
             colors.append(color)
             if use_context:
@@ -311,7 +304,7 @@ class SpeakerLearner(NeuralLearner):
                 mask[i, t] = (token != '<MASK>')
         c = np.tile(c[:, np.newaxis, ...], [1, self.seq_vec.max_len - 1] + [1] * (c.ndim - 1))
 
-        if options.verbosity >= 9:
+        if self.options.verbosity >= 9:
             print('c: %s' % (repr(c),))
             print('P: %s' % (repr(P),))
             print('mask: %s' % (repr(mask),))
@@ -319,7 +312,6 @@ class SpeakerLearner(NeuralLearner):
         return [c, P, mask], [N]
 
     def _build_model(self, model_class=SimpleLasagneModel):
-        options = config.options()
         id_tag = (self.id + '/') if self.id else ''
 
         input_vars = self.color_vec.get_input_vars(self.id, recurrent=True) + [
@@ -331,12 +323,11 @@ class SpeakerLearner(NeuralLearner):
         self.l_out, self.input_layers = self._get_l_out(input_vars)
         self.model = model_class(input_vars, [target_var], self.l_out, id=self.id,
                                  loss=self.masked_loss(input_vars),
-                                 optimizer=OPTIMIZERS[options.speaker_optimizer],
-                                 learning_rate=options.speaker_learning_rate)
+                                 optimizer=OPTIMIZERS[self.options.speaker_optimizer],
+                                 learning_rate=self.options.speaker_learning_rate)
 
     def train_priors(self, training_instances, listener_data=False):
-        options = config.options()
-        prior_class = PRIORS[options.speaker_prior]
+        prior_class = PRIORS[self.options.speaker_prior]
         self.prior_emp = prior_class(recurrent=True)
         self.prior_smooth = prior_class(recurrent=True)
 
@@ -344,8 +335,7 @@ class SpeakerLearner(NeuralLearner):
         self.prior_smooth.train(training_instances, listener_data=listener_data)
 
     def _get_l_out(self, input_vars):
-        options = config.options()
-        check_options(options)
+        check_options(self.options)
         id_tag = (self.id + '/') if self.id else ''
 
         prev_output_var, mask_var = input_vars[-2:]
@@ -355,55 +345,57 @@ class SpeakerLearner(NeuralLearner):
         l_color_repr, color_inputs = self.color_vec.get_input_layer(
             color_input_vars,
             recurrent_length=self.seq_vec.max_len - 1,
-            cell_size=options.speaker_cell_size,
+            cell_size=self.options.speaker_cell_size,
             context_len=context_len,
             id=self.id
         )
         l_hidden_color = dimshuffle(l_color_repr, (0, 2, 1))
-        for i in range(1, options.speaker_hidden_color_layers + 1):
-            l_hidden_color = NINLayer(l_hidden_color, num_units=options.speaker_cell_size,
-                                      nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
-                                      name=id_tag + 'hidden_color%d' % i)
+        for i in range(1, self.options.speaker_hidden_color_layers + 1):
+            l_hidden_color = NINLayer(
+                l_hidden_color, num_units=self.options.speaker_cell_size,
+                nonlinearity=NONLINEARITIES[self.options.speaker_nonlinearity],
+                name=id_tag + 'hidden_color%d' % i)
         l_hidden_color = dimshuffle(l_hidden_color, (0, 2, 1))
 
         l_prev_out = InputLayer(shape=(None, self.seq_vec.max_len - 1),
                                 input_var=prev_output_var,
                                 name=id_tag + 'prev_input')
         l_prev_embed = EmbeddingLayer(l_prev_out, input_size=len(self.seq_vec.tokens),
-                                      output_size=options.speaker_cell_size,
+                                      output_size=self.options.speaker_cell_size,
                                       name=id_tag + 'prev_embed')
         l_in = ConcatLayer([l_hidden_color, l_prev_embed], axis=2, name=id_tag + 'color_prev')
         l_mask_in = InputLayer(shape=(None, self.seq_vec.max_len - 1),
                                input_var=mask_var, name=id_tag + 'mask_input')
         l_rec_drop = l_in
 
-        cell = CELLS[options.speaker_cell]
+        cell = CELLS[self.options.speaker_cell]
         cell_kwargs = {
-            'mask_input': (None if options.speaker_no_mask else l_mask_in),
-            'grad_clipping': options.speaker_grad_clipping,
-            'num_units': options.speaker_cell_size,
+            'mask_input': (None if self.options.speaker_no_mask else l_mask_in),
+            'grad_clipping': self.options.speaker_grad_clipping,
+            'num_units': self.options.speaker_cell_size,
         }
-        if options.speaker_cell == 'LSTM':
-            cell_kwargs['forgetgate'] = Gate(b=Constant(options.speaker_forget_bias))
-        if options.speaker_cell != 'GRU':
-            cell_kwargs['nonlinearity'] = NONLINEARITIES[options.speaker_nonlinearity]
+        if self.options.speaker_cell == 'LSTM':
+            cell_kwargs['forgetgate'] = Gate(b=Constant(self.options.speaker_forget_bias))
+        if self.options.speaker_cell != 'GRU':
+            cell_kwargs['nonlinearity'] = NONLINEARITIES[self.options.speaker_nonlinearity]
 
-        for i in range(1, options.speaker_recurrent_layers):
+        for i in range(1, self.options.speaker_recurrent_layers):
             l_rec = cell(l_rec_drop, name=id_tag + 'rec%d' % i, **cell_kwargs)
-            if options.speaker_dropout > 0.0:
-                l_rec_drop = DropoutLayer(l_rec, p=options.speaker_dropout,
+            if self.options.speaker_dropout > 0.0:
+                l_rec_drop = DropoutLayer(l_rec, p=self.options.speaker_dropout,
                                           name=id_tag + 'rec%d_drop' % i)
             else:
                 l_rec_drop = l_rec
-        l_rec = cell(l_rec_drop, name=id_tag + 'rec%d' % options.speaker_recurrent_layers,
+        l_rec = cell(l_rec_drop, name=id_tag + 'rec%d' % self.options.speaker_recurrent_layers,
                      **cell_kwargs)
-        l_shape = ReshapeLayer(l_rec, (-1, options.speaker_cell_size),
+        l_shape = ReshapeLayer(l_rec, (-1, self.options.speaker_cell_size),
                                name=id_tag + 'reshape')
         l_hidden_out = l_shape
-        for i in range(1, options.speaker_hidden_out_layers + 1):
-            l_hidden_out = DenseLayer(l_hidden_out, num_units=options.speaker_cell_size,
-                                      nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
-                                      name=id_tag + 'hidden_out%d' % i)
+        for i in range(1, self.options.speaker_hidden_out_layers + 1):
+            l_hidden_out = DenseLayer(
+                l_hidden_out, num_units=self.options.speaker_cell_size,
+                nonlinearity=NONLINEARITIES[self.options.speaker_nonlinearity],
+                name=id_tag + 'hidden_out%d' % i)
         l_softmax = DenseLayer(l_hidden_out, num_units=len(self.seq_vec.tokens),
                                nonlinearity=softmax, name=id_tag + 'softmax')
         l_out = ReshapeLayer(l_softmax, (-1, self.seq_vec.max_len - 1, len(self.seq_vec.tokens)),
@@ -429,8 +421,8 @@ class SpeakerLearner(NeuralLearner):
 
 class ContextSpeakerLearner(SpeakerLearner):
     def __init__(self, *args, **kwargs):
-        options = config.options()
-        context = options.num_distractors + 1
+        self.get_options()
+        context = self.options.num_distractors + 1
         return super(ContextSpeakerLearner, self).__init__(*args, context_len=context, **kwargs)
 
 
@@ -623,21 +615,18 @@ class AtomicSpeakerLearner(NeuralLearner):
     '''
     def __init__(self, id=None):
         super(AtomicSpeakerLearner, self).__init__(id=id)
-        options = config.options()
         self.seq_vec = SymbolVectorizer()
-        color_repr = COLOR_REPRS[options.speaker_color_repr]
-        self.color_vec = color_repr(options.speaker_color_resolution,
-                                    hsv=options.speaker_hsv)
+        color_repr = COLOR_REPRS[self.options.speaker_color_repr]
+        self.color_vec = color_repr(self.options.speaker_color_resolution,
+                                    hsv=self.options.speaker_hsv)
 
     def predict_and_score(self, eval_instances, random=False, verbosity=0):
-        options = config.options()
-
         predictions = []
         scores = []
-        batches = iterators.iter_batches(eval_instances, options.speaker_eval_batch_size)
-        num_batches = (len(eval_instances) - 1) // options.speaker_eval_batch_size + 1
+        batches = iterators.iter_batches(eval_instances, self.options.speaker_eval_batch_size)
+        num_batches = (len(eval_instances) - 1) // self.options.speaker_eval_batch_size + 1
 
-        if options.verbosity + verbosity >= 2:
+        if self.options.verbosity + verbosity >= 2:
             print('Testing')
         progress.start_task('Eval batch', num_batches)
         for batch_num, batch in enumerate(batches):
@@ -655,7 +644,7 @@ class AtomicSpeakerLearner(NeuralLearner):
             scores_arr = np.log(probs[np.arange(len(batch)), y])
             scores.extend(scores_arr.tolist())
         progress.end_task()
-        if options.verbosity >= 9:
+        if self.options.verbosity >= 9:
             print('%s %ss:') % (self.id, 'sample' if random else 'prediction')
             for inst, prediction in zip(eval_instances, predictions):
                 print('%s -> %s' % (repr(inst.input), repr(prediction)))
@@ -664,8 +653,6 @@ class AtomicSpeakerLearner(NeuralLearner):
 
     def _data_to_arrays(self, training_instances,
                         init_vectorizer=False, test=False, inverted=False):
-        options = config.options()
-
         get_i, get_o = (lambda inst: inst.input), (lambda inst: inst.output)
         get_color, get_desc = (get_o, get_i) if inverted else (get_i, get_o)
 
@@ -674,7 +661,7 @@ class AtomicSpeakerLearner(NeuralLearner):
 
         sentences = []
         colors = []
-        if options.verbosity >= 9:
+        if self.options.verbosity >= 9:
             print('%s _data_to_arrays:' % self.id)
         for i, inst in enumerate(training_instances):
             desc = get_desc(inst)
@@ -683,14 +670,14 @@ class AtomicSpeakerLearner(NeuralLearner):
                 desc = '<unk>'
             color = get_color(inst)
             assert color
-            if options.verbosity >= 9:
+            if self.options.verbosity >= 9:
                 print('%s -> %s' % (repr(desc), repr(color)))
             sentences.append(desc)
             colors.append(color)
 
         x = self.color_vec.vectorize_all(colors, hsv=True)[:, np.newaxis]
         y = self.seq_vec.vectorize_all(sentences)
-        if options.verbosity >= 9:
+        if self.options.verbosity >= 9:
             print('%s x: %s' % (self.id, x))
             print('%s y: %s' % (self.id, y))
 
@@ -708,8 +695,7 @@ class AtomicSpeakerLearner(NeuralLearner):
                                  loss=self.loss, optimizer=rmsprop, id=self.id)
 
     def train_priors(self, training_instances, listener_data=False):
-        options = config.options()
-        prior_class = PRIORS[options.speaker_prior]
+        prior_class = PRIORS[self.options.speaker_prior]
         self.prior_emp = prior_class()
         self.prior_smooth = prior_class()
 
@@ -717,10 +703,9 @@ class AtomicSpeakerLearner(NeuralLearner):
         self.prior_smooth.train(training_instances, listener_data=listener_data)
 
     def _get_l_out(self, input_vars):
-        options = config.options()
         id_tag = (self.id + '/') if self.id else ''
 
-        cell_size = options.speaker_cell_size or self.seq_vec.num_types
+        cell_size = self.options.speaker_cell_size or self.seq_vec.num_types
         l_color_repr, color_inputs = self.color_vec.get_input_layer(
             input_vars,
             recurrent_length=0,
@@ -728,26 +713,27 @@ class AtomicSpeakerLearner(NeuralLearner):
             id=self.id
         )
         l_hidden_color = l_color_repr
-        for i in range(1, options.speaker_hidden_color_layers + 1):
-            l_hidden_color = NINLayer(l_hidden_color, num_units=cell_size,
-                                      nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
-                                      name=id_tag + 'hidden_color%d' % i)
+        for i in range(1, self.options.speaker_hidden_color_layers + 1):
+            l_hidden_color = NINLayer(
+                l_hidden_color, num_units=cell_size,
+                nonlinearity=NONLINEARITIES[self.options.speaker_nonlinearity],
+                name=id_tag + 'hidden_color%d' % i)
         l_hidden_color = l_hidden_color
 
-        if options.speaker_cell_size == 0:
+        if self.options.speaker_cell_size == 0:
             l_scores = l_color_repr  # BiasLayer(l_color_repr, name=id_tag + 'bias')
         else:
-            if options.speaker_dropout > 0.0:
-                l_color_drop = DropoutLayer(l_hidden_color, p=options.speaker_dropout,
+            if self.options.speaker_dropout > 0.0:
+                l_color_drop = DropoutLayer(l_hidden_color, p=self.options.speaker_dropout,
                                             name=id_tag + 'color_drop')
             else:
                 l_color_drop = l_hidden_color
 
-            l_hidden = DenseLayer(l_color_drop, num_units=options.speaker_cell_size,
-                                  nonlinearity=NONLINEARITIES[options.speaker_nonlinearity],
+            l_hidden = DenseLayer(l_color_drop, num_units=self.options.speaker_cell_size,
+                                  nonlinearity=NONLINEARITIES[self.options.speaker_nonlinearity],
                                   name=id_tag + 'hidden')
-            if options.speaker_dropout > 0.0:
-                l_hidden_drop = DropoutLayer(l_hidden, p=options.speaker_dropout,
+            if self.options.speaker_dropout > 0.0:
+                l_hidden_drop = DropoutLayer(l_hidden, p=self.options.speaker_dropout,
                                              name=id_tag + 'hidden_drop')
             else:
                 l_hidden_drop = l_hidden

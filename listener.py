@@ -208,21 +208,18 @@ class ListenerLearner(NeuralLearner):
     '''
     def __init__(self, id=None):
         super(ListenerLearner, self).__init__(id=id)
-        options = config.options()
         self.word_counts = Counter()
         self.seq_vec = SequenceVectorizer()
-        self.color_vec = BucketsVectorizer(options.listener_color_resolution,
-                                           hsv=options.listener_hsv)
+        self.color_vec = BucketsVectorizer(self.options.listener_color_resolution,
+                                           hsv=self.options.listener_hsv)
 
     def predict_and_score(self, eval_instances, random=False, verbosity=0):
-        options = config.options()
-
         predictions = []
         scores = []
-        batches = iterators.iter_batches(eval_instances, options.listener_eval_batch_size)
-        num_batches = (len(eval_instances) - 1) // options.listener_eval_batch_size + 1
+        batches = iterators.iter_batches(eval_instances, self.options.listener_eval_batch_size)
+        num_batches = (len(eval_instances) - 1) // self.options.listener_eval_batch_size + 1
 
-        if options.verbosity + verbosity >= 2:
+        if self.options.verbosity + verbosity >= 2:
             print('Testing')
         progress.start_task('Eval batch', num_batches)
         for batch_num, batch in enumerate(batches):
@@ -240,7 +237,7 @@ class ListenerLearner(NeuralLearner):
             scores_arr = np.log(probs[np.arange(len(batch)), y]) + self.bucket_adjustment()
             scores.extend(scores_arr.tolist())
         progress.end_task()
-        if options.verbosity >= 9:
+        if self.options.verbosity >= 9:
             print('%s %ss:') % (self.id, 'sample' if random else 'prediction')
             for inst, prediction in zip(eval_instances, predictions):
                 print('%s -> %s' % (repr(inst.input), repr(prediction)))
@@ -267,8 +264,6 @@ class ListenerLearner(NeuralLearner):
 
     def _data_to_arrays(self, training_instances,
                         init_vectorizer=False, test=False, inverted=False):
-        options = config.options()
-
         get_i, get_o = (lambda inst: inst.input), (lambda inst: inst.output)
         get_desc, get_color = (get_o, get_i) if inverted else (get_i, get_o)
 
@@ -279,7 +274,7 @@ class ListenerLearner(NeuralLearner):
 
         sentences = []
         colors = []
-        if options.verbosity >= 9:
+        if self.options.verbosity >= 9:
             print('%s _data_to_arrays:' % self.id)
         for i, inst in enumerate(training_instances):
             desc = get_desc(inst).split()
@@ -289,7 +284,7 @@ class ListenerLearner(NeuralLearner):
                 color = (0.0, 0.0, 0.0)
             s = ['<s>'] * (self.seq_vec.max_len - 1 - len(desc)) + desc
             s.append('</s>')
-            if options.verbosity >= 9:
+            if self.options.verbosity >= 9:
                 print('%s -> %s' % (repr(s), repr(color)))
             sentences.append(s)
             colors.append(color)
@@ -303,7 +298,6 @@ class ListenerLearner(NeuralLearner):
         return [x], [y]
 
     def _build_model(self, model_class=SimpleLasagneModel):
-        options = config.options()
         id_tag = (self.id + '/') if self.id else ''
 
         input_var = T.imatrix(id_tag + 'inputs')
@@ -312,14 +306,14 @@ class ListenerLearner(NeuralLearner):
         self.l_out, self.input_layers = self._get_l_out([input_var])
         self.loss = categorical_crossentropy
 
-        self.model = model_class([input_var], [target_var], self.l_out,
-                                 loss=self.loss, optimizer=OPTIMIZERS[options.listener_optimizer],
-                                 learning_rate=options.listener_learning_rate,
-                                 id=self.id)
+        self.model = model_class(
+            [input_var], [target_var], self.l_out,
+            loss=self.loss, optimizer=OPTIMIZERS[self.options.listener_optimizer],
+            learning_rate=self.options.listener_learning_rate,
+            id=self.id)
 
     def train_priors(self, training_instances, listener_data=False):
-        options = config.options()
-        prior_class = PRIORS[options.listener_prior]
+        prior_class = PRIORS[self.options.listener_prior]
         self.prior_emp = prior_class()  # TODO: accurate values for empirical prior
         self.prior_smooth = prior_class()
 
@@ -327,8 +321,7 @@ class ListenerLearner(NeuralLearner):
         self.prior_smooth.train(training_instances, listener_data=listener_data)
 
     def _get_l_out(self, input_vars):
-        options = config.options()
-        check_options(options)
+        check_options(self.options)
         id_tag = (self.id + '/') if self.id else ''
 
         input_var = input_vars[0]
@@ -336,37 +329,37 @@ class ListenerLearner(NeuralLearner):
         l_in = InputLayer(shape=(None, self.seq_vec.max_len), input_var=input_var,
                           name=id_tag + 'desc_input')
         l_in_embed = EmbeddingLayer(l_in, input_size=len(self.seq_vec.tokens),
-                                    output_size=options.listener_cell_size,
+                                    output_size=self.options.listener_cell_size,
                                     name=id_tag + 'desc_embed')
 
-        cell = CELLS[options.listener_cell]
+        cell = CELLS[self.options.listener_cell]
         cell_kwargs = {
-            'grad_clipping': options.listener_grad_clipping,
-            'num_units': options.listener_cell_size,
+            'grad_clipping': self.options.listener_grad_clipping,
+            'num_units': self.options.listener_cell_size,
         }
-        if options.listener_cell == 'LSTM':
-            cell_kwargs['forgetgate'] = Gate(b=Constant(options.listener_forget_bias))
-        if options.listener_cell != 'GRU':
-            cell_kwargs['nonlinearity'] = NONLINEARITIES[options.listener_nonlinearity]
+        if self.options.listener_cell == 'LSTM':
+            cell_kwargs['forgetgate'] = Gate(b=Constant(self.options.listener_forget_bias))
+        if self.options.listener_cell != 'GRU':
+            cell_kwargs['nonlinearity'] = NONLINEARITIES[self.options.listener_nonlinearity]
 
         l_rec1 = cell(l_in_embed, name=id_tag + 'rec1', **cell_kwargs)
-        if options.listener_dropout > 0.0:
-            l_rec1_drop = DropoutLayer(l_rec1, p=options.listener_dropout,
+        if self.options.listener_dropout > 0.0:
+            l_rec1_drop = DropoutLayer(l_rec1, p=self.options.listener_dropout,
                                        name=id_tag + 'rec1_drop')
         else:
             l_rec1_drop = l_rec1
         l_rec2 = cell(l_rec1_drop, name=id_tag + 'rec2', **cell_kwargs)
-        if options.listener_dropout > 0.0:
-            l_rec2_drop = DropoutLayer(l_rec2, p=options.listener_dropout,
+        if self.options.listener_dropout > 0.0:
+            l_rec2_drop = DropoutLayer(l_rec2, p=self.options.listener_dropout,
                                        name=id_tag + 'rec2_drop')
         else:
             l_rec2_drop = l_rec2
 
-        l_hidden = DenseLayer(l_rec2_drop, num_units=options.listener_cell_size,
-                              nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
+        l_hidden = DenseLayer(l_rec2_drop, num_units=self.options.listener_cell_size,
+                              nonlinearity=NONLINEARITIES[self.options.listener_nonlinearity],
                               name=id_tag + 'hidden')
-        if options.listener_dropout > 0.0:
-            l_hidden_drop = DropoutLayer(l_hidden, p=options.listener_dropout,
+        if self.options.listener_dropout > 0.0:
+            l_hidden_drop = DropoutLayer(l_hidden, p=self.options.listener_dropout,
                                          name=id_tag + 'hidden_drop')
         else:
             l_hidden_drop = l_hidden
@@ -384,11 +377,10 @@ class ContextListenerLearner(ListenerLearner):
     def __init__(self, *args, **kwargs):
         super(ContextListenerLearner, self).__init__(*args, **kwargs)
 
-        options = config.options()
-        self.context_len = options.num_distractors + 1
-        color_repr = COLOR_REPRS[options.listener_color_repr]
-        self.color_vec = color_repr(options.listener_color_resolution,
-                                    hsv=options.listener_hsv)
+        self.context_len = self.options.num_distractors + 1
+        color_repr = COLOR_REPRS[self.options.listener_color_repr]
+        self.color_vec = color_repr(self.options.listener_color_resolution,
+                                    hsv=self.options.listener_hsv)
         self.recurrent_context = True
 
     def unvectorize(self, indices, random=False):
@@ -401,7 +393,6 @@ class ContextListenerLearner(ListenerLearner):
         pass
 
     def _build_model(self, model_class=SimpleLasagneModel):
-        options = config.options()
         id_tag = (self.id + '/') if self.id else ''
 
         input_var = T.imatrix(id_tag + 'inputs')
@@ -411,15 +402,14 @@ class ContextListenerLearner(ListenerLearner):
         self.l_out, self.input_layers = self._get_l_out([input_var] + context_vars)
         self.loss = categorical_crossentropy
 
-        self.model = model_class([input_var] + context_vars, [target_var], self.l_out,
-                                 loss=self.loss, optimizer=OPTIMIZERS[options.listener_optimizer],
-                                 learning_rate=options.listener_learning_rate,
-                                 id=self.id)
+        self.model = model_class(
+            [input_var] + context_vars, [target_var], self.l_out,
+            loss=self.loss, optimizer=OPTIMIZERS[self.options.listener_optimizer],
+            learning_rate=self.options.listener_learning_rate,
+            id=self.id)
 
     def _data_to_arrays(self, training_instances,
                         init_vectorizer=False, test=False, inverted=False):
-        options = config.options()
-
         get_i, get_o = (lambda inst: inst.input), (lambda inst: inst.output)
         get_desc, get_color_index = (get_o, get_i) if inverted else (get_i, get_o)
         get_alt_i, get_alt_o = (lambda inst: inst.alt_inputs), (lambda inst: inst.alt_outputs)
@@ -433,7 +423,7 @@ class ContextListenerLearner(ListenerLearner):
         sentences = []
         colors = []
         target_indices = []
-        if options.verbosity >= 9:
+        if self.options.verbosity >= 9:
             print('%s _data_to_arrays:' % self.id)
         for i, inst in enumerate(training_instances):
             desc = get_desc(inst).split()
@@ -446,7 +436,7 @@ class ContextListenerLearner(ListenerLearner):
             new_context = get_alt_colors(inst)
             assert len(new_context) == self.context_len, \
                 'Inconsistent context lengths: %s' % ((self.context_len, len(new_context)),)
-            if options.verbosity >= 9:
+            if self.options.verbosity >= 9:
                 print('%s [%s] -> %s' % (repr(s), repr(new_context), repr(target)))
             sentences.append(s)
             target_indices.append(target)
@@ -466,15 +456,14 @@ class ContextListenerLearner(ListenerLearner):
         if self.recurrent_context:
             c = np.tile(c[:, np.newaxis, ...], [1, self.seq_vec.max_len] + [1] * (c.ndim - 1))
 
-        if options.verbosity >= 9:
+        if self.options.verbosity >= 9:
             print('x: %s' % (repr(x),))
             print('c: %s' % (repr(c),))
             print('y: %s' % (repr(y),))
         return [x, c], [y]
 
     def _get_l_out(self, input_vars):
-        options = config.options()
-        check_options(options)
+        check_options(self.options)
         id_tag = (self.id + '/') if self.id else ''
 
         input_var = input_vars[0]
@@ -483,54 +472,55 @@ class ContextListenerLearner(ListenerLearner):
         l_in = InputLayer(shape=(None, self.seq_vec.max_len), input_var=input_var,
                           name=id_tag + 'desc_input')
         l_in_embed = EmbeddingLayer(l_in, input_size=len(self.seq_vec.tokens),
-                                    output_size=options.listener_cell_size,
+                                    output_size=self.options.listener_cell_size,
                                     name=id_tag + 'desc_embed')
 
         # Context repr has shape (batch_size, seq_len, context_len * repr_size)
         l_context_repr, context_inputs = self.color_vec.get_input_layer(
             context_vars,
             recurrent_length=self.seq_vec.max_len,
-            cell_size=options.listener_cell_size,
+            cell_size=self.options.listener_cell_size,
             context_len=self.context_len,
             id=self.id
         )
         l_hidden_context = dimshuffle(l_context_repr, (0, 2, 1))
-        for i in range(1, options.listener_hidden_color_layers + 1):
-            l_hidden_context = NINLayer(l_hidden_context, num_units=options.listener_cell_size,
-                                        nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
-                                        name=id_tag + 'hidden_context%d' % i)
+        for i in range(1, self.options.listener_hidden_color_layers + 1):
+            l_hidden_context = NINLayer(
+                l_hidden_context, num_units=self.options.listener_cell_size,
+                nonlinearity=NONLINEARITIES[self.options.listener_nonlinearity],
+                name=id_tag + 'hidden_context%d' % i)
         l_hidden_context = dimshuffle(l_hidden_context, (0, 2, 1))
         l_concat = ConcatLayer([l_hidden_context, l_in_embed], axis=2,
                                name=id_tag + 'concat_inp_context')
 
-        cell = CELLS[options.listener_cell]
+        cell = CELLS[self.options.listener_cell]
         cell_kwargs = {
-            'grad_clipping': options.listener_grad_clipping,
-            'num_units': options.listener_cell_size,
+            'grad_clipping': self.options.listener_grad_clipping,
+            'num_units': self.options.listener_cell_size,
         }
-        if options.listener_cell == 'LSTM':
-            cell_kwargs['forgetgate'] = Gate(b=Constant(options.listener_forget_bias))
-        if options.listener_cell != 'GRU':
-            cell_kwargs['nonlinearity'] = NONLINEARITIES[options.listener_nonlinearity]
+        if self.options.listener_cell == 'LSTM':
+            cell_kwargs['forgetgate'] = Gate(b=Constant(self.options.listener_forget_bias))
+        if self.options.listener_cell != 'GRU':
+            cell_kwargs['nonlinearity'] = NONLINEARITIES[self.options.listener_nonlinearity]
 
         l_rec1 = cell(l_concat, name=id_tag + 'rec1', **cell_kwargs)
-        if options.listener_dropout > 0.0:
-            l_rec1_drop = DropoutLayer(l_rec1, p=options.listener_dropout,
+        if self.options.listener_dropout > 0.0:
+            l_rec1_drop = DropoutLayer(l_rec1, p=self.options.listener_dropout,
                                        name=id_tag + 'rec1_drop')
         else:
             l_rec1_drop = l_rec1
         l_rec2 = cell(l_rec1_drop, name=id_tag + 'rec2', **cell_kwargs)
-        if options.listener_dropout > 0.0:
-            l_rec2_drop = DropoutLayer(l_rec2, p=options.listener_dropout,
+        if self.options.listener_dropout > 0.0:
+            l_rec2_drop = DropoutLayer(l_rec2, p=self.options.listener_dropout,
                                        name=id_tag + 'rec2_drop')
         else:
             l_rec2_drop = l_rec2
 
-        l_hidden = DenseLayer(l_rec2_drop, num_units=options.listener_cell_size,
-                              nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
+        l_hidden = DenseLayer(l_rec2_drop, num_units=self.options.listener_cell_size,
+                              nonlinearity=NONLINEARITIES[self.options.listener_nonlinearity],
                               name=id_tag + 'hidden')
-        if options.listener_dropout > 0.0:
-            l_hidden_drop = DropoutLayer(l_hidden, p=options.listener_dropout,
+        if self.options.listener_dropout > 0.0:
+            l_hidden_drop = DropoutLayer(l_hidden, p=self.options.listener_dropout,
                                          name=id_tag + 'hidden_drop')
         else:
             l_hidden_drop = l_hidden
@@ -546,8 +536,7 @@ class TwoStreamListenerLearner(ContextListenerLearner):
         self.recurrent_context = False
 
     def _get_l_out(self, input_vars):
-        options = config.options()
-        check_options(options)
+        check_options(self.options)
         id_tag = (self.id + '/') if self.id else ''
 
         input_var = input_vars[0]
@@ -556,29 +545,29 @@ class TwoStreamListenerLearner(ContextListenerLearner):
         l_in = InputLayer(shape=(None, self.seq_vec.max_len), input_var=input_var,
                           name=id_tag + 'desc_input')
         l_in_embed = EmbeddingLayer(l_in, input_size=len(self.seq_vec.tokens),
-                                    output_size=options.listener_cell_size,
+                                    output_size=self.options.listener_cell_size,
                                     name=id_tag + 'desc_embed')
 
-        cell = CELLS[options.listener_cell]
+        cell = CELLS[self.options.listener_cell]
         cell_kwargs = {
-            'grad_clipping': options.listener_grad_clipping,
-            'num_units': options.listener_cell_size,
+            'grad_clipping': self.options.listener_grad_clipping,
+            'num_units': self.options.listener_cell_size,
         }
-        if options.listener_cell == 'LSTM':
-            cell_kwargs['forgetgate'] = Gate(b=Constant(options.listener_forget_bias))
-        if options.listener_cell != 'GRU':
-            cell_kwargs['nonlinearity'] = NONLINEARITIES[options.listener_nonlinearity]
+        if self.options.listener_cell == 'LSTM':
+            cell_kwargs['forgetgate'] = Gate(b=Constant(self.options.listener_forget_bias))
+        if self.options.listener_cell != 'GRU':
+            cell_kwargs['nonlinearity'] = NONLINEARITIES[self.options.listener_nonlinearity]
 
         l_rec1 = cell(l_in_embed, name=id_tag + 'rec1', only_return_final=True, **cell_kwargs)
-        if options.listener_dropout > 0.0:
-            l_rec1_drop = DropoutLayer(l_rec1, p=options.listener_dropout,
+        if self.options.listener_dropout > 0.0:
+            l_rec1_drop = DropoutLayer(l_rec1, p=self.options.listener_dropout,
                                        name=id_tag + 'rec1_drop')
         else:
             l_rec1_drop = l_rec1
         '''
         l_rec2 = cell(l_rec1_drop, name=id_tag + 'rec2', only_return_final=True, **cell_kwargs)
-        if options.listener_dropout > 0.0:
-            l_rec2_drop = DropoutLayer(l_rec2, p=options.listener_dropout,
+        if self.options.listener_dropout > 0.0:
+            l_rec2_drop = DropoutLayer(l_rec2, p=self.options.listener_dropout,
                                        name=id_tag + 'rec2_drop')
         else:
             l_rec2_drop = l_rec2
@@ -589,19 +578,19 @@ class TwoStreamListenerLearner(ContextListenerLearner):
         # Context repr has shape (batch_size, context_len * repr_size)
         l_context_repr, context_inputs = self.color_vec.get_input_layer(
             context_vars,
-            cell_size=options.listener_cell_size,
+            cell_size=self.options.listener_cell_size,
             context_len=self.context_len,
             id=self.id
         )
         l_concat = ConcatLayer([l_context_repr, l_rec2_drop], axis=1,
                                name=id_tag + 'concat_context_rec2')
         l_hidden_drop = l_concat
-        for i in range(1, options.listener_hidden_color_layers + 1):
-            l_hidden = NINLayer(l_hidden_drop, num_units=options.listener_cell_size,
-                                nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
+        for i in range(1, self.options.listener_hidden_color_layers + 1):
+            l_hidden = NINLayer(l_hidden_drop, num_units=self.options.listener_cell_size,
+                                nonlinearity=NONLINEARITIES[self.options.listener_nonlinearity],
                                 name=id_tag + 'hidden_combined%d' % i)
-            if options.listener_dropout > 0.0:
-                l_hidden_drop = DropoutLayer(l_hidden, p=options.listener_dropout,
+            if self.options.listener_dropout > 0.0:
+                l_hidden_drop = DropoutLayer(l_hidden, p=self.options.listener_dropout,
                                              name=id_tag + 'hidden_drop')
             else:
                 l_hidden_drop = l_hidden
@@ -633,8 +622,6 @@ class AtomicListenerLearner(ListenerLearner):
 
     def _data_to_arrays(self, training_instances,
                         init_vectorizer=False, test=False, inverted=False):
-        options = config.options()
-
         get_i, get_o = (lambda inst: inst.input), (lambda inst: inst.output)
         get_desc, get_color = (get_o, get_i) if inverted else (get_i, get_o)
 
@@ -643,7 +630,7 @@ class AtomicListenerLearner(ListenerLearner):
 
         sentences = []
         colors = []
-        if options.verbosity >= 9:
+        if self.options.verbosity >= 9:
             print('%s _data_to_arrays:' % self.id)
         for i, inst in enumerate(training_instances):
             self.word_counts.update([get_desc(inst)])
@@ -652,7 +639,7 @@ class AtomicListenerLearner(ListenerLearner):
             if not color:
                 assert test
                 color = (0.0, 0.0, 0.0)
-            if options.verbosity >= 9:
+            if self.options.verbosity >= 9:
                 print('%s -> %s' % (repr(desc), repr(color)))
             sentences.append(desc)
             colors.append(color)
@@ -677,8 +664,7 @@ class AtomicListenerLearner(ListenerLearner):
                                  loss=self.loss, optimizer=rmsprop, id=self.id)
 
     def train_priors(self, training_instances, listener_data=False):
-        options = config.options()
-        prior_class = PRIORS[options.listener_prior]
+        prior_class = PRIORS[self.options.listener_prior]
         self.prior_emp = prior_class()  # TODO: accurate values for the empirical prior
         self.prior_smooth = prior_class()
 
@@ -686,26 +672,25 @@ class AtomicListenerLearner(ListenerLearner):
         self.prior_smooth.train(training_instances, listener_data=listener_data)
 
     def _get_l_out(self, input_vars):
-        options = config.options()
         id_tag = (self.id + '/') if self.id else ''
 
         input_var = input_vars[0]
 
         l_in = InputLayer(shape=(None,), input_var=input_var,
                           name=id_tag + 'desc_input')
-        embed_size = options.listener_cell_size or self.color_vec.num_types
+        embed_size = self.options.listener_cell_size or self.color_vec.num_types
         l_in_embed = EmbeddingLayer(l_in, input_size=len(self.seq_vec.tokens),
                                     output_size=embed_size,
                                     name=id_tag + 'desc_embed')
 
-        if options.listener_cell_size == 0:
+        if self.options.listener_cell_size == 0:
             l_scores = l_in_embed  # BiasLayer(l_in_embed, name=id_tag + 'bias')
         else:
-            l_hidden = DenseLayer(l_in_embed, num_units=options.listener_cell_size,
-                                  nonlinearity=NONLINEARITIES[options.listener_nonlinearity],
+            l_hidden = DenseLayer(l_in_embed, num_units=self.options.listener_cell_size,
+                                  nonlinearity=NONLINEARITIES[self.options.listener_nonlinearity],
                                   name=id_tag + 'hidden')
-            if options.listener_dropout > 0.0:
-                l_hidden_drop = DropoutLayer(l_hidden, p=options.listener_dropout,
+            if self.options.listener_dropout > 0.0:
+                l_hidden_drop = DropoutLayer(l_hidden, p=self.options.listener_dropout,
                                              name=id_tag + 'hidden_drop')
             else:
                 l_hidden_drop = l_hidden
