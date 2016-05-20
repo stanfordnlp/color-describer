@@ -110,7 +110,7 @@ def count_differences(results):
     rows = [{'Comparison': differences(answers[key], correct[key]),
              'Input.target': correct[key],
              'Answer.answer': majority([a for system in answers[key]
-                                          for a in answers[key][system]])}
+                                        for a in answers[key][system]])}
             for key in correct]
     return compare(rows, groupby=['Comparison'])
 
@@ -123,9 +123,9 @@ def agreement(answers):
 
 def differences(systems, correct):
     result = []
-    for sys, ans in systems.items():
+    for system, ans in systems.items():
         assert len(ans) == 1, ans
-        result.append('%s:%s' % (sys, ('right' if ans[0] == correct else 'wrong')))
+        result.append('%s:%s' % (system, ('right' if ans[0] == correct else 'wrong')))
     return tuple(sorted(result))
 
 
