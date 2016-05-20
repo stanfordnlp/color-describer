@@ -107,6 +107,14 @@ def sample(a, temperature=1.0):
         return np.array([sample(s, temperature) for s in a])
 
 
+class Unpicklable(object):
+    def __init__(self, name):
+        self.name = name
+
+    def __repr__(self):
+        return '<%s removed in pickling>' % (self.name,)
+
+
 class SimpleLasagneModel(object):
     def __init__(self, input_vars, target_vars, l_out, loss,
                  optimizer, learning_rate=0.001, id=None):
@@ -279,6 +287,12 @@ class SimpleLasagneModel(object):
                 excerpt = slice(start_idx, start_idx + batch_size)
             yield [X[excerpt] for X in inputs], [y[excerpt] for y in targets], []
 
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state['loss'] = Unpicklable('loss')
+        state['l_out'] = Unpicklable('l_out')
+        return state
+
 
 class NeuralLearner(Learner):
     '''
@@ -391,6 +405,10 @@ class NeuralLearner(Learner):
         self.unpickle(state)
 
     def unpickle(self, state, model_class=SimpleLasagneModel):
+        if isinstance(state, dict) and 'quickpickle' in state and state['quickpickle']:
+            self.__dict__.update(state)
+            return
+
         # TODO: remove references to the vectorizers from this superclass
         if len(state) == 3:
             self.seq_vec, self.color_vec, params_state = state
