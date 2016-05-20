@@ -8,7 +8,8 @@ from numbers import Number
 from unittest import TestCase
 
 import run_experiment  # NOQA: for command line options
-from stanza.research import config, instance, summary
+from stanza.monitoring import summary
+from stanza.research import config, instance
 from learners import HistogramLearner, LookupLearner
 from learners import MostCommonSpeakerLearner, RandomListenerLearner
 from speaker import SpeakerLearner, AtomicSpeakerLearner
@@ -86,8 +87,8 @@ class TestModels(TestCase):
 
         mo = MockOpen(TEST_DIR)
         mgfp = mock_get_file_path(TEST_DIR)
-        with mock.patch('stanza.research.summary.open', mo), \
-                mock.patch('stanza.research.summary.SummaryWriter', MockSummaryWriter), \
+        with mock.patch('stanza.monitoring.summary.open', mo), \
+                mock.patch('stanza.monitoring.summary.SummaryWriter', MockSummaryWriter), \
                 mock.patch('stanza.research.config.open', mo), \
                 mock.patch('stanza.research.config.get_file_path', mgfp):
             speaker = speaker_class()
@@ -156,8 +157,8 @@ class TestModels(TestCase):
 
         mo = MockOpen(TEST_DIR)
         mgfp = mock_get_file_path(TEST_DIR)
-        with mock.patch('stanza.research.summary.open', mo), \
-                mock.patch('stanza.research.summary.SummaryWriter', MockSummaryWriter), \
+        with mock.patch('stanza.monitoring.summary.open', mo), \
+                mock.patch('stanza.monitoring.summary.SummaryWriter', MockSummaryWriter), \
                 mock.patch('stanza.research.config.open', mo), \
                 mock.patch('stanza.research.config.get_file_path', mgfp):
             listener = listener_class()
