@@ -407,6 +407,7 @@ class MSVectorizer(ColorVectorizer):
     different resolutions, and concatenates these representations.
     '''
     def __init__(self, resolution='ignored', hsv='ignored'):
+        import learners
         self.num_types = np.prod(learners.HistogramLearner.GRANULARITY[0])
         self.buckets = [BucketsVectorizer(res, hsv=True)
                         for res in learners.HistogramLearner.GRANULARITY]
@@ -796,8 +797,3 @@ COLOR_REPRS = {
     'fourier': FourierVectorizer,
     'tuna_binary': TunaBinaryVectorizer,
 }
-
-
-# neural has to import some of the classes above to keep pickle files readable.
-# Don't let the cycle keep this module from being imported.
-import learners
