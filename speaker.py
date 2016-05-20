@@ -236,7 +236,8 @@ class SpeakerLearner(NeuralLearner):
                         init_vectorizer=False, test=False, inverted=False):
         options = config.options()
 
-        use_context = hasattr(self, 'context_len') and self.context_len > 1
+        context_len = self.context_len if hasattr(self, 'context_len') else 1
+        use_context = context_len > 1
 
         def get_multi(val):
             if isinstance(val, tuple):
@@ -284,8 +285,8 @@ class SpeakerLearner(NeuralLearner):
                 if isinstance(index, tuple):
                     assert len(index) == 1
                     index = index[0]
-                assert len(new_context) == self.context_len, \
-                    'Inconsistent context lengths: %s' % ((self.context_len, len(new_context)),)
+                assert len(new_context) == context_len, \
+                    'Inconsistent context lengths: %s' % ((context_len, len(new_context)),)
                 colors.extend([c for j, c in enumerate(new_context) if j != index])
             previous.append(prev)
             next_tokens.append(next)
@@ -295,9 +296,9 @@ class SpeakerLearner(NeuralLearner):
         N = np.zeros((len(next_tokens), self.seq_vec.max_len - 1), dtype=np.int32)
         c = self.color_vec.vectorize_all(colors, hsv=True)
         if len(c.shape) == 1:
-            c = c.reshape((len(colors) / self.context_len, self.context_len))
+            c = c.reshape((len(colors) / context_len, context_len))
         else:
-            c = c.reshape((len(colors) / self.context_len, self.context_len * c.shape[1]) +
+            c = c.reshape((len(colors) / context_len, context_len * c.shape[1]) +
                           c.shape[2:])
         for i, (color, prev, next) in enumerate(zip(colors, previous, next_tokens)):
             if len(prev) > P.shape[1]:
