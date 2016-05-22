@@ -606,18 +606,8 @@ class TwoStreamListenerLearner(ContextListenerLearner):
 
         l_scores = DenseLayer(l_hidden_drop, num_units=self.context_len, nonlinearity=softmax,
                               name=id_tag + 'scores')
-        recurse(l_scores)
 
         return l_scores, [l_in] + context_inputs
-
-
-def recurse(layer, indent=0):
-    print('%s%s %s' % ('  ' * indent, layer.name, type(layer)))
-    if hasattr(layer, 'input_layers'):
-        for inp in layer.input_layers:
-            recurse(inp, indent=indent + 1)
-    elif hasattr(layer, 'input_layer'):
-        recurse(layer.input_layer, indent=indent + 1)
 
 
 class AtomicListenerLearner(ListenerLearner):

@@ -135,6 +135,9 @@ class SimpleLasagneModel(object):
         id_tag = (self.id + '/') if self.id else ''
         id_tag_log = (self.id + ': ') if self.id else ''
 
+        if self.options.verbosity >= 6:
+            output_model_structure(l_out)
+
         params = self.params()
         (monitored,
          train_loss_grads,
@@ -300,6 +303,15 @@ class SimpleLasagneModel(object):
         if not hasattr(self, 'options'):
             options = config.options()
             self.options = argparse.Namespace(**options.__dict__)
+
+
+def output_model_structure(layer, indent=0):
+    print('%s%s %s' % ('  ' * indent, layer.name, type(layer)))
+    if hasattr(layer, 'input_layers'):
+        for inp in layer.input_layers:
+            output_model_structure(inp, indent=indent + 1)
+    elif hasattr(layer, 'input_layer'):
+        output_model_structure(layer.input_layer, indent=indent + 1)
 
 
 class NeuralLearner(Learner):
