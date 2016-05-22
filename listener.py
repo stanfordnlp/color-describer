@@ -377,11 +377,17 @@ class ContextListenerLearner(ListenerLearner):
     def __init__(self, *args, **kwargs):
         super(ContextListenerLearner, self).__init__(*args, **kwargs)
 
-        self.context_len = self.options.num_distractors + 1
         color_repr = COLOR_REPRS[self.options.listener_color_repr]
         self.color_vec = color_repr(self.options.listener_color_resolution,
                                     hsv=self.options.listener_hsv)
-        self.recurrent_context = True
+
+    @property
+    def recurrent_context(self):
+        return True
+
+    @property
+    def context_len(self):
+        return self.options.num_distractors + 1
 
     def unvectorize(self, indices, random=False):
         return indices
@@ -533,7 +539,10 @@ class ContextListenerLearner(ListenerLearner):
 class TwoStreamListenerLearner(ContextListenerLearner):
     def __init__(self, *args, **kwargs):
         super(TwoStreamListenerLearner, self).__init__(*args, **kwargs)
-        self.recurrent_context = False
+
+    @property
+    def recurrent_context(self):
+        return False
 
     def _get_l_out(self, input_vars):
         check_options(self.options)
