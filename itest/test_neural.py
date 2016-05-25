@@ -65,6 +65,9 @@ class TestModels(TestCase):
     def test_atomic_speaker(self):
         self.run_speaker(AtomicSpeakerLearner)
 
+    def test_atomic_speaker_ms(self):
+        self.run_speaker(AtomicSpeakerLearner, color_repr='ms')
+
     def test_rsa_speaker(self):
         self.run_speaker(RSALearner, images=True)  # extra images from listener
 
@@ -77,12 +80,14 @@ class TestModels(TestCase):
     def test_most_common_speaker(self):
         self.run_speaker(MostCommonSpeakerLearner, tensorboard=False)
 
-    def run_speaker(self, speaker_class, cell='LSTM', tensorboard=True, images=False):
+    def run_speaker(self, speaker_class, cell='LSTM', color_repr='buckets',
+                    tensorboard=True, images=False):
         sys.argv = []
         options = config.options()
         options.train_iters = 2
         options.train_epochs = 3
         options.speaker_cell = cell
+        options.speaker_color_repr = color_repr
         options.listener = False
 
         mo = MockOpen(TEST_DIR)

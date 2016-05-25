@@ -675,7 +675,9 @@ class AtomicSpeakerLearner(NeuralLearner):
             sentences.append(desc)
             colors.append(color)
 
-        x = self.color_vec.vectorize_all(colors, hsv=True)[:, np.newaxis]
+        x = self.color_vec.vectorize_all(colors, hsv=True)
+        if len(x.shape) == 1:
+            x = x[:, np.newaxis]
         y = self.seq_vec.vectorize_all(sentences)
         if self.options.verbosity >= 9:
             print('%s x: %s' % (self.id, x))
