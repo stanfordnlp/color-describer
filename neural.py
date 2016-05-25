@@ -237,8 +237,9 @@ class SimpleLasagneModel(object):
             progress.end_task()
 
             for tag, values in history_epoch.items():
-                history[tag].append(np.array(values))
-                mean_values = np.mean(values, axis=0)
+                values_array = np.array([np.asarray(v) for v in values])
+                history[tag].append(values_array)
+                mean_values = np.mean(values_array, axis=0)
                 if len(mean_values.shape) == 0:
                     summary_writer.log_scalar(step + epoch, tag, mean_values)
                 else:
