@@ -197,6 +197,52 @@ def amsterdam_typical_train(listener=False):
     return triples_to_insts(data, listener=listener)
 
 
+def amsterdam_1word_train(listener=False):
+    data = [
+        ('light', 0, [(260., 45., 100.), (260., 100., 100.)]),
+        ('purple', 0, [(260., 45., 100.), (260., 100., 100.)]),
+        ('purple', 1, [(260., 45., 100.), (260., 100., 100.)]),
+        ('purple', 1, [(260., 45., 100.), (260., 100., 100.)]),
+        ('light', 1, [(260., 100., 100.), (260., 45., 100.)]),
+        ('purple', 1, [(260., 100., 100.), (260., 45., 100.)]),
+        ('purple', 0, [(260., 100., 100.), (260., 45., 100.)]),
+        ('purple', 0, [(260., 100., 100.), (260., 45., 100.)]),
+    ] * 3 + [
+        ('pinkish', 1, [(260., 100., 100.), (300., 100., 100.)]),
+        ('pinkish', 1, [(260., 100., 100.), (300., 100., 100.)]),
+        ('purple', 1, [(260., 100., 100.), (300., 100., 100.)]),
+        ('purple', 0, [(260., 100., 100.), (300., 100., 100.)]),
+        ('purple', 0, [(260., 100., 100.), (300., 100., 100.)]),
+        ('purple', 0, [(260., 100., 100.), (300., 100., 100.)]),
+        ('pinkish', 0, [(300., 100., 100.), (260., 100., 100.)]),
+        ('pinkish', 0, [(300., 100., 100.), (260., 100., 100.)]),
+        ('purple', 0, [(300., 100., 100.), (260., 100., 100.)]),
+        ('purple', 1, [(300., 100., 100.), (260., 100., 100.)]),
+        ('purple', 1, [(300., 100., 100.), (260., 100., 100.)]),
+        ('purple', 1, [(300., 100., 100.), (260., 100., 100.)]),
+    ] * 2
+    return triples_to_insts(data, listener=listener)
+
+
+def amsterdam_unambiguous_train(listener=False):
+    data = [
+        ('light purple', 0, [(260., 45., 100.), (260., 100., 100.)]),
+        ('purple', 1, [(260., 45., 100.), (260., 100., 100.)]),
+        ('light purple', 1, [(260., 100., 100.), (260., 45., 100.)]),
+        ('purple', 0, [(260., 100., 100.), (260., 45., 100.)]),
+    ] * 3 + [
+        ('pinkish purple', 1, [(260., 100., 100.), (300., 100., 100.)]),
+        ('pinkish', 1, [(260., 100., 100.), (300., 100., 100.)]),
+        ('purple', 0, [(260., 100., 100.), (300., 100., 100.)]),
+        ('purple', 0, [(260., 100., 100.), (300., 100., 100.)]),
+        ('pinkish purple', 0, [(300., 100., 100.), (260., 100., 100.)]),
+        ('pinkish', 0, [(300., 100., 100.), (260., 100., 100.)]),
+        ('purple', 1, [(300., 100., 100.), (260., 100., 100.)]),
+        ('purple', 1, [(300., 100., 100.), (260., 100., 100.)]),
+    ] * 2
+    return triples_to_insts(data, listener=listener)
+
+
 def amsterdam_test(listener=False):
     data = [
         ('', 0, [(300., 45., 100.), (300., 100., 100.)]),
@@ -368,6 +414,8 @@ SOURCES = {
     'hawkins': DataSource(lambda listener: [], hawkins_context),
     'hawkins_target': DataSource(lambda listener: [], hawkins_target),
     'ams_literal': DataSource(amsterdam_literal_train, amsterdam_test),
+    'ams_unambig': DataSource(amsterdam_unambiguous_train, amsterdam_test),
+    'ams_1word': DataSource(amsterdam_1word_train, amsterdam_test),
     'ams_typical': DataSource(amsterdam_typical_train, amsterdam_test),
     'ams_typical_allways': DataSource(amsterdam_typical_train, amsterdam_test_allways),
     'tuna_cv': DataSource(tuna_instances.tuna_train_cv, tuna_instances.tuna_test_cv),
