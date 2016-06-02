@@ -1,0 +1,100 @@
+{
+  "batch_size": 128,
+  "data_source": "test",
+  "detect_nans": false,
+  "device": null,
+  "direct_base_learner": "Listener",
+  "eval_agent": 0,
+  "exhaustive_base_learner": "Listener",
+  "grad_of_est": false,
+  "layer_by_layer": false,
+  "learner": "Lux",
+  "listener": false,
+  "listener_cell": "LSTM",
+  "listener_cell_size": 20,
+  "listener_class": [
+    "Listener"
+  ],
+  "listener_color_repr": "buckets",
+  "listener_color_resolution": [
+    4
+  ],
+  "listener_dropout": 0.2,
+  "listener_eval_batch_size": 65536,
+  "listener_forget_bias": 5.0,
+  "listener_grad_clipping": 0.0,
+  "listener_hidden_color_layers": 0,
+  "listener_hsv": false,
+  "listener_learning_rate": 1.0,
+  "listener_nonlinearity": "rectify",
+  "listener_optimizer": "rmsprop",
+  "listener_prior": "Unigram",
+  "listener_sample_smoothed": false,
+  "listener_samples": 128,
+  "load": null,
+  "lux_batch_size": 4000,
+  "lux_threads": 8,
+  "monitor_grads": false,
+  "monitor_params": false,
+  "monitor_subgrads": false,
+  "monitor_sublosses": false,
+  "no_graphviz": false,
+  "no_nan_suppression": false,
+  "num_distractors": 4,
+  "output_test_data": false,
+  "output_train_data": false,
+  "progress_tick": 300,
+  "random_seed": "DefaultRandomSeed",
+  "rsa_alpha": [
+    1.0
+  ],
+  "rsa_beta": [
+    1.0
+  ],
+  "rsa_learning_rate": 0.1,
+  "rsa_listeners": 1,
+  "rsa_mu": [
+    1.0
+  ],
+  "rsa_nu": [
+    1.0
+  ],
+  "rsa_optimizer": "rmsprop",
+  "rsa_speakers": 1,
+  "run_dir": "runs/lux_test",
+  "speaker_beam_size": 1,
+  "speaker_cell": "LSTM",
+  "speaker_cell_size": 20,
+  "speaker_class": [
+    "Speaker"
+  ],
+  "speaker_color_repr": "buckets",
+  "speaker_color_resolution": [
+    4
+  ],
+  "speaker_dropout": 0.2,
+  "speaker_eval_batch_size": 16384,
+  "speaker_forget_bias": 5.0,
+  "speaker_grad_clipping": 0.0,
+  "speaker_hidden_color_layers": 0,
+  "speaker_hidden_out_layers": 0,
+  "speaker_hsv": false,
+  "speaker_learning_rate": 0.1,
+  "speaker_no_mask": false,
+  "speaker_nonlinearity": "rectify",
+  "speaker_optimizer": "rmsprop",
+  "speaker_prior": "Uniform",
+  "speaker_recurrent_layers": 2,
+  "speaker_sample_smoothed": false,
+  "speaker_samples": 128,
+  "test_size": null,
+  "train_epochs": 100,
+  "train_iters": 10,
+  "train_size": null,
+  "true_grad_clipping": 0.0,
+  "tuna_cv_folds": 5,
+  "tuna_cv_test_fold": 4,
+  "tuna_section": "*",
+  "validation_size": 0,
+  "verbosity": 4
+}
