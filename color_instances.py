@@ -45,8 +45,7 @@ def get_training_instances(listener=False):
     return insts
 
 
-def get_dev_instances(listener=False):
-    handles = munroecorpus.get_dev_handles()
+def get_eval_instances(handles, listener=False):
     insts = [
         (Instance(input=name,
                   output=tuple(color))
@@ -58,6 +57,14 @@ def get_dev_instances(listener=False):
     ]
     rng.shuffle(insts)
     return insts
+
+
+def get_dev_instances(listener=False):
+    return get_eval_instances(munroecorpus.get_dev_handles(), listener=listener)
+
+
+def get_test_instances(listener=False):
+    return get_eval_instances(munroecorpus.get_test_handles(), listener=listener)
 
 
 def tune_train(listener=False):
@@ -433,6 +440,7 @@ DataSource = namedtuple('DataSource', ['train_data', 'test_data'])
 
 SOURCES = {
     'dev': DataSource(get_training_instances, get_dev_instances),
+    'test': DataSource(get_training_instances, get_test_instances),
     'tune': DataSource(tune_train, tune_test),
     '2word': DataSource(two_word, two_word),
     '1word': DataSource(one_word, one_word),

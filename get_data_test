@@ -9,8 +9,8 @@ fi
 
 run_dir="$1"
 
-l_data="$(echo runs/data_l/data.*.jsons)"
-s_data="$(echo runs/data_s/data.*.jsons)"
+l_data="$(echo runs/data_test_l/data.*.jsons)"
+s_data="$(echo runs/data_test_s/data.*.jsons)"
 
 if [[ $(grep '"listener": true,' "$run_dir"/config.json) ]]; then
   data="$l_data"
