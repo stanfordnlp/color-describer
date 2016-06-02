@@ -1,0 +1,58 @@
+Learning to Generate Compositional Color Descriptions
+=====================================================
+
+Supplementary material
+Version 0.1, 2 June 2016
+
+This package contains code for a larger project. Not all files are relevant to
+this submission.
+
+Outputs tables
+--------------
+
+A full table of samples from the model that provided the examples in Table 1 and
+Table 3 is included at:
+
+    outputs/color_samples.html
+
+Dependencies
+------------
+
+Run this script to download data and Python package dependencies:
+
+    ./dependencies
+
+Activating a virtualenv is recommended before running this command. If not
+using virtualenv, permissions problems may be solved by adding `sudo` to the
+pip commands (though installing packages on the global system Python this way
+is considered bad practice).
+
+The code is written to be run on a Linux system. It might run on Mac OS X. It
+is unlikely to run on Windows.
+
+Running experiments
+-------------------
+
+To re-run the experiments from the paper (Table 2) with pre-trained models, use
+the following command, where `lstm_fourier` (our best model) can be replaced
+with any of the eight experiment configurations in the outputs/ directory:
+
+    python run_experiment.py --config models/lstm_fourier.config.json \
+                             --load models/lstm_fourier.p \
+                             --progress_tick 10
+
+The results of the experiment, including predictions and log-likelihood scores,
+will be logged to the directory
+
+    runs/lstm_fourier
+
+To retrain a model from scratch, supply only the config file:
+
+    python run_experiment.py --config models/lstm_fourier.config.json
+
+Note that this may require several days to train on CPU. A properly-configured
+GPU usually takes a few hours and can be used by passing `--device gpu0`. See
+
+    http://deeplearning.net/software/theano/tutorial/using_gpu.html
+
+for necessary configuration.
