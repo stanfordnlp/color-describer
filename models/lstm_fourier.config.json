@@ -2,7 +2,7 @@
   "batch_size": 128,
   "data_source": "dev",
   "detect_nans": false,
-  "device": "gpu0",
+  "device": "cpu",
   "direct_base_learner": "Listener",
   "eval_agent": 0,
   "exhaustive_base_learner": "Listener",
