@@ -41,7 +41,7 @@
   "no_graphviz": true,
   "no_nan_suppression": false,
   "num_distractors": 4,
-  "output_test_data": false,
+  "output_test_data": true,
   "output_train_data": false,
   "progress_tick": 300,
   "random_seed": "DefaultRandomSeed",
