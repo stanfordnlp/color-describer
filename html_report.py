@@ -36,7 +36,6 @@ def html_report(output, compare=None):
     >>> print(html_report(Output(config_dict, results_dict, data, scores, predictions)))
     <html>
     <head>
-    <link rel="stylesheet" href="http://web.stanford.edu/~wmonroe4/css/style.css" type="text/css">
     <title>runs/test - Output report</title>
     </head>
     <body>
@@ -76,7 +75,6 @@ def html_report(output, compare=None):
 
     main_template = '''<html>
 <head>
-<link rel="stylesheet" href="http://web.stanford.edu/~wmonroe4/css/style.css" type="text/css">
 <title>{run_dir} - Output report</title>
 </head>
 <body>
