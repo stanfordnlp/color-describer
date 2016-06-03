@@ -1,6 +1,6 @@
 {
   "batch_size": 128,
-  "data_source": "dev",
+  "data_source": "test",
   "detect_nans": false,
   "device": "gpu0",
   "direct_base_learner": "Listener",
@@ -61,7 +61,7 @@
   ],
   "rsa_optimizer": "rmsprop",
   "rsa_speakers": 1,
-  "run_dir": "runs/lstm_fourier",
+  "run_dir": "runs/lstm_fourier_test",
   "speaker_beam_size": 10,
   "speaker_cell": "LSTM",
   "speaker_cell_size": 20,

@@ -61,7 +61,7 @@
   ],
   "rsa_optimizer": "rmsprop",
   "rsa_speakers": 1,
-  "run_dir": "runs/hist_test",
+  "run_dir": "runs/hm_test",
   "speaker_beam_size": 1,
   "speaker_cell": "LSTM",
   "speaker_cell_size": 20,
