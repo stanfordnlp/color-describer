@@ -13,29 +13,11 @@ if [ ! -e rugstk ]; then
     rm rugstk_v1.0.tar.gz
 fi
 
-# Download TUNA REG corpus (http://www.abdn.ac.uk/ncs/departments/computing-science/corpus-496.php)
-if [ ! -e tuna ]; then
-    echo 'Downloading TUNA...'
-    wget http://www.abdn.ac.uk/ncs/documents/corpus.zip
-    echo 'Extracting...'
-    unzip corpus.zip
-    mv dist tuna
-    rm corpus.zip
-# tar xzf REG08_TUNA_DATA_2008-03-10.tar.gz REG08_TUNA-AS_TEST-DATA_FULL.tar.gz
-# mv REG08_TUNA_DATA_2008-03-10/* tuna/
-# mv REG08_TUNA-AS_TEST-DATA_FULL tuna/test
-fi
+echo 'Installing NumPy, SciPy, and Cython (this could take a while)...'
+pip install numpy 'cython>=0.21' 'SciPy>=0.9'
 
-# Download Robert Hawkins' reference game data
-if [ ! -e hawkins_data ]; then
-    echo 'Downloading Hawkins ref game data...'
-    mkdir hawkins_data
-    wget https://raw.githubusercontent.com/hawkrobe/reference_games/e8dc1e99b8120061e06f4630ba6b937f7abfcc1c/data/colorReference/clickedObj/colorReferenceClicks.csv
-    mv colorReferenceClicks.csv hawkins_data/
-fi
-
-echo 'Installing Python module dependencies...'
-pip install ConfigArgParse pyhocon pypng 'Protobuf>=3.0.0b2' pydot graphviz scikit-learn scikit-image
+echo 'Installing other Python module dependencies...'
+pip install theano lasagne ConfigArgParse 'pyhocon==0.3.18' pypng 'Protobuf>=3.0.0b2' pydot graphviz scikit-learn scikit-image
 
 if [ ! -e tensorflow ]; then
     echo 'Checking for tensorboard protos...'
