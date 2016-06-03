@@ -9,7 +9,6 @@ class TensorBoardLogger(object):
 
     This can be easily extended to log other kinds of summary events.
 
-    @wmonroe has a version that doesn't rely so heavily on the TF library.
     See summary.py
     """
 
