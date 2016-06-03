@@ -6,7 +6,7 @@ set -o errexit
 # Includes Munroe color corpus with train/dev/test split
 if [ ! -e rugstk ]; then
     echo 'Downloading LUX...'
-    wget http://paul.rutgers.edu/~bcm84/rugstk_v1.0.tar.gz
+    curl -O http://paul.rutgers.edu/~bcm84/rugstk_v1.0.tar.gz
     echo 'Extracting...'
     tar xzf rugstk_v1.0.tar.gz
     mv rugstk_v1 rugstk
