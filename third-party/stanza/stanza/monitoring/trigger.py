@@ -1,6 +1,5 @@
 from collections import deque
 
-__author__ = 'victor, kelvinguu'
 import numpy as np
 
 

@@ -12,7 +12,6 @@ Can be called from the shell, with no arguments:
 Warning: This is hacky and brittle, and can break if nvidia-smi changes
 in the way it formats its output.
 '''
-__author__ = 'sbowman@stanford.edu, wmonroe4@stanford.edu'
 
 import subprocess
 import sys

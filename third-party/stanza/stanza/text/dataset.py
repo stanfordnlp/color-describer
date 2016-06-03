@@ -1,7 +1,6 @@
 """
 Dataset module for managing text datasets.
 """
-__author__ = 'victor'
 from collections import OrderedDict
 import random
 import numpy as np

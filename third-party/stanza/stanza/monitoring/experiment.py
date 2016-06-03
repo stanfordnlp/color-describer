@@ -1,7 +1,6 @@
 """
 Utilities useful for experiment setup
 """
-__author__ = 'victor'
 import json
 
 

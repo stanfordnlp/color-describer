@@ -1,4 +1,3 @@
-__author__ = 'victor'
 
 from unittest import TestCase
 from stanza.text.vocab import Vocab, SennaVocab, GloveVocab

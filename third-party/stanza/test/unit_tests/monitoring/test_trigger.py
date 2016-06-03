@@ -1,4 +1,3 @@
-__author__ = 'victor, kelvinguu'
 
 from unittest import TestCase
 from stanza.monitoring.trigger import ThresholdTrigger, SlopeTrigger, PatienceTrigger

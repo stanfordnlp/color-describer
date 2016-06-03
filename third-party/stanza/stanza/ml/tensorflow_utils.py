@@ -1,6 +1,5 @@
 import tensorflow as tf
 
-__author__ = 'kelvinguu'
 
 
 def labels_to_onehots(labels, num_classes):

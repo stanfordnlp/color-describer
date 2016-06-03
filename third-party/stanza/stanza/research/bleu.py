@@ -2,7 +2,6 @@
 An implementation of unsmoothed corpus-level BLEU.
 '''
 
-__author__ = 'wmonroe4'
 
 from math import log, exp
 from collections import Counter

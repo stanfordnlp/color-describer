@@ -1,4 +1,3 @@
-__author__ = 'victor, wmonroe4'
 
 from distutils.core import setup, Command
 

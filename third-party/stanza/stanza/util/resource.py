@@ -1,4 +1,3 @@
-__author__ = 'victor'
 import os
 import stanza
 import requests

@@ -3,7 +3,6 @@ import numpy as np
 from stanza.ml.tensorflow_utils import labels_to_onehots
 from unittest import TestCase
 
-__author__ = 'kelvinguu'
 
 
 class TestTensorFlowUtils(TestCase):

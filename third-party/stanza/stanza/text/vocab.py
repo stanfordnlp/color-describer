@@ -1,7 +1,6 @@
 """
 Vocabulary module for conversion between word tokens and numerical indices.
 """
-__author__ = 'victor'
 from collections import Counter, namedtuple, OrderedDict
 from itertools import izip
 import numpy as np

@@ -13,7 +13,6 @@ import platform
 from contextlib import contextmanager
 import shutil
 
-__author__ = 'kelvinguu'
 
 
 # need to be specified by user

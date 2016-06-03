@@ -1,6 +1,5 @@
 import tensorflow as tf
 
-__author__ = 'kelvinguu'
 
 class TensorBoardLogger(object):
     """Log scalars to event files that can then be read by TensorBoard.

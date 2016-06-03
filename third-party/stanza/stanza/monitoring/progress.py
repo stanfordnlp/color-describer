@@ -25,7 +25,6 @@ Repetition 1 of 2, Example 3 of 3 (~100% done, ETA ...)
 Repetition 2 of 2 (~100% done, ETA ...)
 """
 
-__author__ = 'wmonroe4'
 
 
 import datetime

@@ -51,7 +51,6 @@ from the parent directory of the directory containing the events file.
 >>> fs.stop()
 ... # ^ for doctest; ignore
 '''
-__author__ = 'wmonroe4'
 
 import atexit
 import numpy as np
