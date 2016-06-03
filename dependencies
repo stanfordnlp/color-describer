@@ -16,8 +16,12 @@ fi
 echo 'Installing NumPy, SciPy, and Cython (this could take a while)...'
 pip install numpy 'cython>=0.21' 'SciPy>=0.9'
 
+echo 'Installing Theano and Lasagne...'
+pip install https://github.com/Theano/Theano/archive/master.zip
+pip install https://github.com/Lasagne/Lasagne/archive/master.zip
+
 echo 'Installing other Python module dependencies...'
-pip install theano lasagne ConfigArgParse 'pyhocon==0.3.18' pypng 'Protobuf>=3.0.0b2' pydot graphviz scikit-learn scikit-image
+pip install ConfigArgParse pyhocon pypng 'Protobuf>=3.0.0b2' pydot graphviz scikit-learn scikit-image
 
 if [ ! -e tensorflow ]; then
     echo 'Checking for tensorboard protos...'
