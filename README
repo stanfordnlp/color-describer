@@ -24,13 +24,8 @@ Python package dependencies:
 
     ./dependencies
 
-If using Anaconda, run
-
-    ./dependencies conda
-
-to use `conda install` instead of `pip install` (the default). The dependencies
-script is reasonably simple, so if this fails, it should be possible to
-look at the script and manually perform the actions it specifies.
+The dependencies script is reasonably simple, so if this fails, it should be
+possible to look at the script and manually perform the actions it specifies.
 
 If not using virtualenv, permissions problems may be solved by adding `sudo` to
 the `$pkg_mgr` commands (though installing packages on the global system Python this
