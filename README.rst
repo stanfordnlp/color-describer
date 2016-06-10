@@ -2,16 +2,15 @@ Learning to Generate Compositional Color Descriptions
 =====================================================
 
 Code and supplementary material
-3 June 2016
 
-This package contains code for a larger project. Not all files are relevant to
-this submission.
+Note that this repo is split off from a larger project still in development:
+https://github.com/futurulus/coop-nets
 
 Outputs tables
 --------------
 
-A full table of samples from the model that provided the examples in Table 1 and
-Table 3 is included at:
+A full table of samples from the model that provided the examples in Table 1
+and Table 3 is included at: ::
 
     outputs/color_samples.html
 
@@ -20,16 +19,12 @@ Dependencies
 
 You'll first need Python 2.7. Creating and activating a new virtualenv or
 Anaconda environment is recommended. Then run this script to download data and
-Python package dependencies:
+Python package dependencies: ::
 
     ./dependencies
 
 The dependencies script is reasonably simple, so if this fails, it should be
 possible to look at the script and manually perform the actions it specifies.
-
-If not using virtualenv, permissions problems may be solved by adding `sudo` to
-the `$pkg_mgr` commands (though installing packages on the global system Python this
-way is considered bad practice).
 
 This code is written to be run on a Linux system; we've also tested it on Mac
 OS X (but see "Troubleshooting": missing g++ will cause the program to run
@@ -40,31 +35,31 @@ Running experiments
 -------------------
 
 To re-run the experiments from the paper (Table 2) with pre-trained models, use
-the following command, where `lstm_fourier` (our best model) can be replaced
-with any of the eight experiment configurations in the outputs/ directory:
+the following command, where ``lstm_fourier`` (our best model) can be replaced
+with any of the eight experiment configurations in the outputs/ directory: ::
 
     python run_experiment.py --config models/lstm_fourier.config.json \
                              --load models/lstm_fourier.p \
                              --progress_tick 10
 
 This should take about 15 minutes on a typical new-ish machine. Look for these
-metrics in the outputs to compare with Table 2:
+metrics in the outputs to compare with Table 2: ::
 
     dev.perplexity.gmean
     dev.aic.sum
     dev.accuracy.mean
 
 The results of the experiment, including predictions and log-likelihood scores,
-will be logged to the directory
+will be logged to the directory ::
 
     runs/lstm_fourier
 
-To retrain a model from scratch, supply only the config file:
+To retrain a model from scratch, supply only the config file: ::
 
     python run_experiment.py --config models/lstm_fourier.config.json
 
 Note that this may require several days to train on CPU. A properly-configured
-GPU usually takes a few hours and can be used by passing `--device gpu0`. See
+GPU usually takes a few hours and can be used by passing ``--device gpu0``. See
 
     http://deeplearning.net/software/theano/tutorial/using_gpu.html
 
@@ -75,32 +70,33 @@ Troubleshooting
 
 * Error messages of the form
 
-    error: argument --...: invalid int value: '<pyhocon.config_tree.NoneValue
-    object at ...>'
+    ``error: argument --...: invalid int value: '<pyhocon.config_tree.NoneValue
+    object at ...>'``
 
   should be solved by making sure you're using pyhocon version 0.3.18; if this
   doesn't work, supplying a number for the argument should fix it. We've seen
-  this with the arguments --train_size or --test_size; to fix these, add
+  this with the arguments ``--train_size`` or ``--test_size``; to fix these,
+  add ::
 
     --train_size 10000000 --test_size 10000000
 
 * A warning message of the form
 
-    WARNING (theano.configdefaults): g++ not detected ! Theano will be unable
+    ``WARNING (theano.configdefaults): g++ not detected ! Theano will be unable
     to execute optimized C-implementations (for both CPU and GPU) and will
     default to Python implementations. Performance will be severely degraded.
-    To remove this warning, set Theano flags cxx to an empty string.
+    To remove this warning, set Theano flags cxx to an empty string.``
 
   should be heeded. Otherwise even just running prediction will take a very
-  long time (days). Check whether you can run `g++` from a terminal, or try
-  changing the Theano cxx flag (~/.theanorc) to point to an alternative C++
+  long time (days). Check whether you can run ``g++`` from a terminal, or try
+  changing the Theano cxx flag (in ~/.theanorc) to point to an alternative C++
   compiler on the system.
 
 * If retrying a run after a previous error, you'll need to add the option
-  `--overwrite` (or specify a different output directory with `--run_dir DIR`).
-  The program will remind you of this if you forget.
+  ``--overwrite`` (or specify a different output directory with ``--run_dir
+  DIR``).  The program will remind you of this if you forget.
 
-* Very large dev perplexity (dev.perplexity.gmean > 50) could indicate
+* Very large dev perplexity (``dev.perplexity.gmean`` > 50) could indicate
   incompatible changes in the version of Lasagne or Theano (we've seen this
   with Lasagne 0.1). We've reproduced our main results using the development
   versions of Theano and Lasagne as of June 2, 2016:
