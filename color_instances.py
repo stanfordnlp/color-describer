@@ -14,8 +14,6 @@ from stanza.research import config
 from stanza.research.instance import Instance
 from stanza.research.rng import get_rng
 
-import tuna_instances
-
 
 rng = get_rng()
 
@@ -457,7 +455,4 @@ SOURCES = {
     'ams_1word': DataSource(amsterdam_1word_train, amsterdam_test),
     'ams_typical': DataSource(amsterdam_typical_train, amsterdam_test),
     'ams_typical_allways': DataSource(amsterdam_typical_train, amsterdam_test_allways),
-    'tuna_cv': DataSource(tuna_instances.tuna_train_cv, tuna_instances.tuna_test_cv),
-    'tuna_dev': DataSource(tuna_instances.tuna08_train, tuna_instances.tuna08_dev),
-    'tuna_test': DataSource(tuna_instances.tuna08_train, tuna_instances.tuna08_test)
 }

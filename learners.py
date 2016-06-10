@@ -8,7 +8,6 @@ from lux import LuxLearner
 from listener import LISTENERS
 from speaker import SpeakerLearner, ContextSpeakerLearner, AtomicSpeakerLearner
 from vectorizers import BucketsVectorizer
-from rsa import RSALearner
 
 
 def new(key):
@@ -312,18 +311,8 @@ LEARNERS = {
     'Speaker': SpeakerLearner,
     'ContextSpeaker': ContextSpeakerLearner,
     'AtomicSpeaker': AtomicSpeakerLearner,
-    'RSA': RSALearner,
     'MostCommon': MostCommonSpeakerLearner,
     'Random': RandomListenerLearner,
     'Lookup': LookupLearner,
 }
 LEARNERS.update(LISTENERS)
-
-# Break cyclic dependency: ExhaustiveS1Learner needs list of learners to define
-# exhaustive_base_learner command line option, LEARNERS needs ExhaustiveS1Learner
-# to be defined to include it in the list.
-import ref_game
-LEARNERS.update({
-    'ExhaustiveS1': ref_game.ExhaustiveS1Learner,
-    'DirectRefGame': ref_game.DirectRefGameLearner,
-})

@@ -14,7 +14,6 @@ from learners import HistogramLearner, LookupLearner
 from learners import MostCommonSpeakerLearner, RandomListenerLearner
 from speaker import SpeakerLearner, AtomicSpeakerLearner
 from listener import ListenerLearner, AtomicListenerLearner
-from rsa import RSALearner
 
 
 TEST_DIR = '/shouldnotexist'
@@ -67,9 +66,6 @@ class TestModels(TestCase):
 
     def test_atomic_speaker_ms(self):
         self.run_speaker(AtomicSpeakerLearner, color_repr='ms')
-
-    def test_rsa_speaker(self):
-        self.run_speaker(RSALearner, images=True)  # extra images from listener
 
     def test_histogram_speaker(self):
         self.run_speaker(HistogramLearner, tensorboard=False)
@@ -148,9 +144,6 @@ class TestModels(TestCase):
 
     def test_atomic_listener(self):
         self.run_listener(listener_class=AtomicListenerLearner)
-
-    def test_rsa_listener(self):
-        self.run_listener(listener_class=RSALearner)
 
     def run_listener(self, listener_class=ListenerLearner, cell='LSTM', tensorboard=True):
         sys.argv = []
