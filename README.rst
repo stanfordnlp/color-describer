@@ -101,5 +101,5 @@ Troubleshooting
   with Lasagne 0.1). We've reproduced our main results using the development
   versions of Theano and Lasagne as of June 2, 2016:
 
-    https://github.com/Theano/Theano/tree/0693ce052725a15b502068a1490b0637216feb00
-    https://github.com/Lasagne/Lasagne/tree/8fe645d28b66f991d547e9b6a314251b8e84446a
+    * https://github.com/Theano/Theano/tree/0693ce052725a15b502068a1490b0637216feb00
+    * https://github.com/Lasagne/Lasagne/tree/8fe645d28b66f991d547e9b6a314251b8e84446a
