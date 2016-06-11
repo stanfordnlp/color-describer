@@ -161,9 +161,11 @@ class SpeakerLearner(NeuralLearner):
 
         if self.options.verbosity + verbosity >= 2:
             print('Predicting')
-        progress.start_task('Predict batch', num_batches)
+        if self.options.verbosity + verbosity >= 1:
+            progress.start_task('Predict batch', num_batches)
         for batch_num, batch in enumerate(batches):
-            progress.progress(batch_num)
+            if self.options.verbosity + verbosity >= 1:
+                progress.progress(batch_num)
             batch = list(batch)
 
             (c, _p, mask), (_y,) = self._data_to_arrays(batch, test=True)
@@ -198,7 +200,8 @@ class SpeakerLearner(NeuralLearner):
                     beam_search_step(scores, length, beam, beam_scores, done, eos_index)
             outputs = self.seq_vec.unvectorize_all(beam[:, 0, :])
             result.extend([' '.join(strip_invalid_tokens(o)) for o in outputs])
-        progress.end_task()
+        if self.options.verbosity + verbosity >= 1:
+            progress.end_task()
 
         return result
 
@@ -209,9 +212,11 @@ class SpeakerLearner(NeuralLearner):
 
         if self.options.verbosity + verbosity >= 2:
             print('Scoring')
-        progress.start_task('Score batch', num_batches)
+        if self.options.verbosity + verbosity >= 1:
+            progress.start_task('Score batch', num_batches)
         for batch_num, batch in enumerate(batches):
-            progress.progress(batch_num)
+            if self.options.verbosity + verbosity >= 1:
+                progress.progress(batch_num)
             batch = list(batch)
 
             xs, (n,) = self._data_to_arrays(batch, test=False)
@@ -223,7 +228,8 @@ class SpeakerLearner(NeuralLearner):
             scores_arr = np.sum(np.log(token_probs) * mask, axis=1)
             scores = scores_arr.tolist()
             result.extend(scores)
-        progress.end_task()
+        if self.options.verbosity + verbosity >= 1:
+            progress.end_task()
 
         return result
 
@@ -628,9 +634,11 @@ class AtomicSpeakerLearner(NeuralLearner):
 
         if self.options.verbosity + verbosity >= 2:
             print('Testing')
-        progress.start_task('Eval batch', num_batches)
+        if self.options.verbosity + verbosity >= 1:
+            progress.start_task('Eval batch', num_batches)
         for batch_num, batch in enumerate(batches):
-            progress.progress(batch_num)
+            if self.options.verbosity + verbosity >= 1:
+                progress.progress(batch_num)
             batch = list(batch)
 
             xs, (y,) = self._data_to_arrays(batch, test=True)
@@ -643,7 +651,8 @@ class AtomicSpeakerLearner(NeuralLearner):
             predictions.extend(self.seq_vec.unvectorize_all(indices))
             scores_arr = np.log(probs[np.arange(len(batch)), y])
             scores.extend(scores_arr.tolist())
-        progress.end_task()
+        if self.options.verbosity + verbosity >= 1:
+            progress.end_task()
         if self.options.verbosity >= 9:
             print('%s %ss:') % (self.id, 'sample' if random else 'prediction')
             for inst, prediction in zip(eval_instances, predictions):

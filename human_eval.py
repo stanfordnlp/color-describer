@@ -5,11 +5,11 @@ try:
 except ImportError, e:
     import warnings
     warnings.warn('Could not import wx; human_eval cannot be used: %s' % e)
-import colorsys
 from itertools import izip
 
 from stanza.research import config, evaluate, instance, learner, metrics, output, rng
 import html_report
+from colorutils import rgb_to_hsv
 
 
 parser = config.get_options_parser()
@@ -85,12 +85,6 @@ class ColorPickerDialog(Dialog):
 
     def get_colors(self):
         return [rgb_to_hsv(button.GetColour()) for button in self.buttons]
-
-
-def rgb_to_hsv(rgb):
-    rgb_0_1 = [d / 255.0 for d in rgb[:3]]
-    hsv_0_1 = colorsys.rgb_to_hsv(*rgb_0_1)
-    return tuple(d * r for d, r in zip(hsv_0_1, [360.0, 100.0, 100.0]))
 
 
 def get_trial_data(dir_output, size, tag):
