@@ -31,6 +31,38 @@ OS X (but see "Troubleshooting": missing g++ will cause the program to run
 impossibly slowly). The code is unlikely to run on Windows, but you're welcome
 to try.
 
+Usage
+-----
+
+The easiest way to see the model in action is to use the ``colordesc``
+module: ::
+
+    >>> import colordesc
+    >>> describer = colordesc.ColorDescriber()
+    >>> describer.describe((255, 0, 0))
+    'red'
+
+This loads a pickled Theano model, which may not be very robust to different
+system configurations or very future-proof; if you run into problems with this,
+read on.
+
+Repickling from model params
+----------------------------
+
+The pickle files in the ``models`` directory, with the exception of
+``lstm_fourier_quick.p``, contain only the parameters of the model, which
+makes them more portable, but they require a bit more work: ::
+
+    $ mkdir -p runs/lstm_fourier
+    $ cp models/lstm_fourier.p runs/lstm_fourier/model.p
+    $ python quickpickle.py --config models/lstm_fourier.config.json --run_dir runs/lstm_fourier
+    $ python
+    >>> import colordesc, cPickle as pickle
+    >>> with open('runs/lstm_fourier/quickpickle.p', 'rb') as picklefile:
+    ...     describer = colordesc.ColorDescriber(picklefile)
+    >>> describer.describe((255, 0, 0))
+    'red'
+
 Running experiments
 -------------------
 
