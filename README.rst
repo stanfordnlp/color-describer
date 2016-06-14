@@ -1,7 +1,7 @@
 Learning to Generate Compositional Color Descriptions
 =====================================================
 
-Code and supplementary material
+Code and supplementary material for http://arxiv.org/abs/1606.03821
 
 Note that this repo is split off from a larger project still in development:
 https://github.com/futurulus/coop-nets
