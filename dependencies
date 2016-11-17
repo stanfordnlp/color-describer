@@ -21,7 +21,7 @@ pip install https://github.com/Theano/Theano/archive/master.zip
 pip install https://github.com/Lasagne/Lasagne/archive/master.zip
 
 echo 'Installing other Python module dependencies...'
-pip install ConfigArgParse 'pyhocon==0.3.18' pypng 'Protobuf>=3.0.0b2' scikit-learn scikit-image matplotlib
+pip install 'ConfigArgParse==0.10.0' 'pyhocon==0.3.18' pypng 'Protobuf>=3.0.0b2' scikit-learn scikit-image matplotlib
 
 if [ ! -e tensorflow ]; then
     echo 'Checking for tensorboard protos...'
